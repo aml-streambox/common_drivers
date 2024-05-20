@@ -210,7 +210,7 @@ static void build_hdmitx_attr_str(char *attr_str, u32 format, u32 bit_depth)
 	};
 
 	sprintf(attr_str, "%s,%dbit", colorspace, bit_depth);
-	DRM_INFO("%s:%s = %u+%u\n", __func__, attr_str, format, bit_depth);
+	DRM_DEBUG("%s:%s = %u+%u\n", __func__, attr_str, format, bit_depth);
 }
 
 static struct hdmitx_color_attr *meson_hdmitx_get_candidate_attr_list
