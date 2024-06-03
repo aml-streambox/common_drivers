@@ -561,6 +561,71 @@ err:
 	return ret;
 }
 
+/**
+ * drm_atomic_helper_wait_for_vblanks - wait for vblank on CRTCs
+ * @dev: DRM device
+ * @old_state: atomic state object with old state structures
+ *
+ * Helper to, after atomic commit, wait for vblanks on all affected
+ * CRTCs (ie. before cleaning up old framebuffers using
+ * drm_atomic_helper_cleanup_planes()). It will only wait on CRTCs where the
+ * framebuffers have actually changed to optimize for the legacy cursor and
+ * plane update use-case.
+ *
+ * Drivers using the nonblocking commit tracking support initialized by calling
+ * drm_atomic_helper_setup_commit() should look at
+ * drm_atomic_helper_wait_for_flip_done() as an alternative.
+ */
+static void
+meson_drm_atomic_helper_wait_for_vblanks(struct drm_device *dev,
+		struct drm_atomic_state *old_state)
+{
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *old_crtc_state, *new_crtc_state;
+	int i, ret;
+	unsigned int crtc_mask = 0;
+
+	 /*
+	  * Legacy cursor ioctls are completely unsynced, and userspace
+	  * relies on that (by doing tons of cursor updates).
+	  */
+	if (old_state->legacy_cursor_update)
+		return;
+
+	for_each_oldnew_crtc_in_state(old_state, crtc, old_crtc_state, new_crtc_state, i) {
+		if (!new_crtc_state->active)
+			continue;
+
+		ret = drm_crtc_vblank_get(crtc);
+		if (ret != 0)
+			continue;
+
+		crtc_mask |= drm_crtc_mask(crtc);
+		old_state->crtcs[i].last_vblank_count = drm_crtc_vblank_count(crtc);
+	}
+
+	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
+		if (!(crtc_mask & drm_crtc_mask(crtc)))
+			continue;
+
+		ret = wait_event_timeout(dev->vblank[i].queue,
+				old_state->crtcs[i].last_vblank_count !=
+					drm_crtc_vblank_count(crtc),
+				msecs_to_jiffies(100));
+
+		/*
+		 * amlogic modify, WARN api print so many messages.
+		 * it will lead to system high latency occasionally.
+		 * just print the timed out message is enough
+		 */
+		if (!ret)
+			DRM_WARN("[CRTC:%d:%s] vblank wait timed out\n", crtc->base.id,
+				 crtc->name);
+
+		drm_crtc_vblank_put(crtc);
+	}
+}
+
 void meson_atomic_helper_commit_tail_rpm(struct drm_atomic_state *old_state)
 {
 	struct drm_device *dev = old_state->dev;
@@ -578,7 +643,7 @@ void meson_atomic_helper_commit_tail_rpm(struct drm_atomic_state *old_state)
 	drm_atomic_helper_commit_hw_done(old_state);
 
 	if (!priv->disable_video_plane)
-		drm_atomic_helper_wait_for_vblanks(dev, old_state);
+		meson_drm_atomic_helper_wait_for_vblanks(dev, old_state);
 	priv->disable_video_plane = 0;
 
 	drm_atomic_helper_cleanup_planes(dev, old_state);
@@ -606,6 +671,6 @@ void meson_atomic_helper_commit_tail(struct drm_atomic_state *old_state)
 	}
 
 	/*use */
-	drm_atomic_helper_commit_tail_rpm(old_state);
+	meson_atomic_helper_commit_tail_rpm(old_state);
 }
 
