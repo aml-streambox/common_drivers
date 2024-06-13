@@ -597,21 +597,10 @@ static void video_hw_enable(struct meson_vpu_block *vblk,
 	MESON_DRM_BLOCK("%s enable done.\n", video->base.name);
 }
 
-static void video_disable_work_func(struct work_struct *works)
-{
-	struct meson_vpu_disable_work *worker = container_of(works,
-		struct meson_vpu_disable_work, work);
-#ifdef CONFIG_AMLOGIC_VIDEO_COMPOSER
-	video_display_setenable(worker->idx, 0);
-#endif
-	worker->video->video_enabled = 0;
-}
-
 static void video_hw_disable(struct meson_vpu_block *vblk,
 			     struct meson_vpu_block_state *state)
 {
 	struct meson_vpu_video *video = to_video_block(vblk);
-	struct meson_vpu_disable_work *worker;
 	struct meson_drm *priv;
 
 	if (!video) {
@@ -619,16 +608,15 @@ static void video_hw_disable(struct meson_vpu_block *vblk,
 		return;
 	}
 
-	worker = &video->worker;
 	priv = video->base.pipeline->priv;
 
 	if (video->vfm_mode) {
 		DRM_INFO("%s dmabuf(%px), release_fence(%px), video_name(%s)\n",
 			__func__, video->dmabuf, video->fence, video->base.name);
-		worker->idx = vblk->index;
-		worker->video = video;
-		if (video->disable_wq)
-			queue_work(video->disable_wq, &worker->work);
+#ifdef CONFIG_AMLOGIC_VIDEO_COMPOSER
+		video_display_setenable(vblk->index, 0);
+		video->video_enabled = 0;
+#endif
 		video->fence = NULL;
 		video->dmabuf = NULL;
 		priv->disable_video_plane = 1;
@@ -698,11 +686,6 @@ static void video_hw_init(struct meson_vpu_block *vblk)
 	}
 
 	DRM_INFO("%s:vfm_mode = %d\n", __func__, video->vfm_mode);
-	if (video->vfm_mode) {
-		video->disable_wq = alloc_workqueue("disable_wq",
-				WQ_HIGHPRI | WQ_CPU_INTENSIVE, 0);
-		INIT_WORK(&video->worker.work, video_disable_work_func);
-	}
 	MESON_DRM_BLOCK("%s:%s done.\n", __func__, video->base.name);
 }
 
