@@ -2068,6 +2068,11 @@
 	status = "okay";
 };
 
+&wdt {
+	/* 0:userspace, 1:kernel */
+	amlogic,feed_watchdog_mode = <0>;
+};
+
 &CPU0 {
 	cpu-supply = <&vddcpua>;
 	multi_tables_available;
