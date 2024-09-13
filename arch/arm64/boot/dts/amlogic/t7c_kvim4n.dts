@@ -529,7 +529,7 @@
 	onewire:onewire {
 		compatible = "w1-gpio";
 		gpios = <&gpio GPIOT_19 GPIO_ACTIVE_HIGH>;
-		status = "okay";
+		status = "disabled";
 	};
 
 	hdmirx {
