@@ -2006,6 +2006,10 @@
 	status = "okay";
 };
 
+&pwm_ef {
+	status = "okay";
+};
+
 &irblaster {
 	status = "okay";
 };
