@@ -1400,36 +1400,18 @@
 	status = "okay";
 };
 
+&i2c0 {
+	status = "disabled";
+	pinctrl-names="default";
+	pinctrl-0=<&i2c0_pins1>;
+	clock-frequency = <100000>; /* default 100k */
+};
 
 &i2c1 {
 	status = "okay";
 	pinctrl-names="default";
 	pinctrl-0=<&i2c1_pins1>;
 	clock-frequency = <100000>; /* default 100k */
-	sensor-i2c@6c {
-		compatible = "arm, i2c-sensor-ssub";
-		reg = <0x6c>;
-		reg-names = "i2c-sensor";
-		slave-addr = <0x6c>;
-		reg-type = <2>;
-		reg-data-type = <1>;
-		link-device = <&phycsi>;
-	};
-
-	tas5707_36: tas5707_36@1b {
-		compatible = "ti,tas5707";
-		#sound-dai-cells = <0>;
-		reg = <0x1b>;
-		status = "okay";
-		reset_pin = <&gpio GPIOT_19 GPIO_ACTIVE_HIGH>;
-	};
-
-	tas5707_3a: tas5707_3a@1d {
-		compatible = "ti,tas5707";
-		#sound-dai-cells = <0>;
-		reg = <0x1d>;
-		status = "okay";
-	};
 };
 
 &i2c2 {
@@ -1497,7 +1479,7 @@
 };
 
 &i2c5 {
-	status = "okay";
+	status = "disabled";
 	pinctrl-names = "default";//, "sleep"
 	pinctrl-0 = <&i2c5_pins1>;
 	//pinctrl-1 = <&i2c2_sleep_pins2>;
