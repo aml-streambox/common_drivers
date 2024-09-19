@@ -103,12 +103,14 @@
 
 		dsp_fw_reserved0:linux,dsp_fw0 {
 			compatible = "amlogic, dsp";
+			reusable;
 			size = <0x0 0x800000>;
 			reg = <0x0 0x40000000 0x0 0x800000>;
 		};
 
 		dsp_fw_reserved1:linux,dsp_fw1 {
 			compatible = "amlogic, dsp";
+			reusable;
 			size = <0x0 0x800000>;
 			reg = <0x0 0x40800000 0x0 0x800000>;
 		};
