@@ -8,7 +8,7 @@
 #include "mesont7.dtsi"
 #include "partition_normal_linux.dtsi"
 #include <dt-bindings/input/input.h>
-#include "mesont7_an400-panel.dtsi"
+#include "khadas-panel.dtsi"
 #include "mesont7_drm.dtsi"
 #include "meson-ir-map-linux.dtsi"
 
@@ -343,9 +343,9 @@
 		/***************************************************
 		 * en_4k: t5d not support 4k
 		 ***************************************************/
-		//en_4k = <1>;
+		en_4k = <0>;
 		//keep_dec_vf = <2>;
-		//po_fmt = <6>;
+		po_fmt = <0>;
 		/***************************************************
 		 * post_nub: default is 11 (T7/T3/SC2/S4 new path)
 		 * local 7*4075520 = 28
@@ -357,7 +357,7 @@
 		 * bit 0: for 4k
 		 * bit 1: for 1080p
 		 ***************************************************/
-		//alloc_sct = <1>;
+		alloc_sct = <0>;
 		/***************************************************
 		 * hf: default is 0 (T7/T3/SC2/S4 new path)
 		 * 0:not enable;
@@ -1488,6 +1488,7 @@
 		compatible = "haoyu,hym8563";
 		reg = <0x51>;
 	};
+
 	khadas-mcu@18 {
 		compatible = "khadas-mcu";
 		reg = <0x18>;
@@ -1497,6 +1498,7 @@
 		fan,trig_temp_level3 = <80>;
 		hwver = "VIM4.V12"; /* Will be updated in uboot. */
 	};
+
 	khadas-kxtj3@e {
 		compatible = "kxtj3";
 		reg = <0x0E>;
@@ -1660,8 +1662,10 @@
 
 &fb {
 	status = "disabled";
-	display_size_default = <1920 1080 1920 2160 32>;
-	mem_size = <0x00800000 0x1980000 0x100000 0x100000 0x100000>;
+	display_size_default = <3840 2160 3840 4320 32>;
+	mem_size = <0x00800000 0x4000000 0x100000 0x100000 0x100000>;
+	4k2k_fb = <1>;
+	display_device_cnt = <2>;
 	logo_addr = "0x3f800000";
 	mem_alloc = <0>;
 	pxp_mode = <0>; /** 0:normal mode 1:pxp mode */
@@ -1677,6 +1681,7 @@
 &drm_vpu {
 	status = "okay";
 	logo_addr = "0x3f800000";
+
 	connectors_dev: port@1 {
 		drm_to_lcd0: endpoint@2 {
 			reg = <2>;
@@ -1696,7 +1701,6 @@
 &drm_subsystem {
 		crtc_masks = <3 7 1>;
 		dummyl_from_hdmitx = /bits/ 8  <1>;
-		crtcmask_of_video = <0 1 0>; /* 1st output with 2*video plane */
 };
 
 &lcd {
@@ -1736,9 +1740,13 @@
 
 &amhdmitx {
 	status = "okay";
-	enc_idx = <0>;
+	repeater_tx = <0>;
+	enc_idx = <2>;
+	vrr_type = <2>; /* 1: GAME-VRR, 2: QMS-VRR */
+	hdmi_repeater = <1>;
 	/* hdcp ctrl 0: sysctrl, 1: drv, 2: linux app */
 	hdcp_ctl_lvl = <1>;
+	max_refreshrate = <120>; /* SH-17689 DEBUG*/
 };
 
 /*if you want to use vdin just modify status to "ok"*/
