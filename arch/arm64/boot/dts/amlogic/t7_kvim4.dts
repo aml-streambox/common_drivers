@@ -1963,6 +1963,7 @@
 	status = "okay";
 	reset-gpios = <&gpio    GPIOX_17 GPIO_ACTIVE_HIGH>;
 	hostwake-gpios = <&gpio GPIOX_19 GPIO_ACTIVE_HIGH>;
+	power_down_disable = <1>;
 };
 
 &pwm_ab {
@@ -1978,7 +1979,9 @@
 &uart_C {
 	status = "okay";
 	uart-has-rtscts;
+	uart_for_bt = <1>;
 };
+
 
 &pwmao_ab {
 	status = "okay";
