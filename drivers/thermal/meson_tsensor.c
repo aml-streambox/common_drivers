@@ -551,7 +551,6 @@ int meson_get_temperature(void)
 	}
 	return temp / 1000;
 }
-EXPORT_SYMBOL(meson_get_temperature);
 
 static void meson_tsensor_work(struct work_struct *work)
 {
@@ -927,6 +926,7 @@ static const struct file_operations temp_write_fops = {
 	.release = single_release,
 };
 
+void register_get_temperature_interface(int (*pfunc)(void));
 static int meson_tsensor_probe(struct platform_device *pdev)
 {
 	struct meson_tsensor_data *data;
@@ -1012,6 +1012,8 @@ static int meson_tsensor_probe(struct platform_device *pdev)
 
 	if (data->id == 0)
 		g_tsensor_data_ptr = data;
+
+	register_get_temperature_interface(meson_get_temperature);
 
 out:
 	return 0;
