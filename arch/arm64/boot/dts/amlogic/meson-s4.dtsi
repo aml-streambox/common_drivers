@@ -878,7 +878,7 @@
 				reg = <0x0 0x48000 0x0 0x1c>;
 			};
 
-			watchdog@2100 {
+			wdt: watchdog@2100 {
 				compatible = "amlogic,meson-sc2-wdt";
 				status = "okay";
 				/* 0:userspace, 1:kernel */
@@ -2115,7 +2115,7 @@
 		reg = <0x0 0xfe09e080 0x0 0x100>;
 	};
 
-	ge2d {
+	ge2d: ge2d {
 		compatible = "amlogic, ge2d-s4";
 		status = "okay";
 		interrupts = <GIC_SPI 217 IRQ_TYPE_EDGE_RISING>;
