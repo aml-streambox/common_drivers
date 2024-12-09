@@ -13,8 +13,8 @@
 
 / {
 	model = "Khadas VIM1S";
-	amlogic-dt-id = "s4_s905y4_ap222";
-	compatible = "s4_s905y4_ap222";
+	amlogic-dt-id = "s4_s905y4_kvim1s";
+	compatible = "s4_s905y4_kvim1s";
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
 	#size-cells = <2>;
@@ -350,6 +350,7 @@
 			key-name = "secure_boot_set";
 			key-device = "efuse";
 			key-permit = "write";
+			size = <14>;
 		};
 		keysn_4:key_4{
 			key-name = "mac_bt";
@@ -715,6 +716,11 @@
 
 &vddcpu0 {
 	status = "okay";
+};
+
+&wdt {
+	/* 0:userspace, 1:kernel */
+	amlogic,feed_watchdog_mode = <0>;
 };
 
 &CPU0 {
@@ -1273,10 +1279,12 @@
 	cap-mmc-highspeed;
 	mmc-ddr-1_8v;
 	mmc-hs200-1_8v;
-	mmc-hs400-1_8v;
+//	mmc-hs400-1_8v;
 	max-frequency = <200000000>;
 	non-removable;
 	disable-wp;
+	hs4_core_phase = <0>;
+	hs4_tx_phase = <0>;
 
 //	mmc-pwrseq = <&emmc_pwrseq>;
 //	vmmc-supply = <&vddao_3v3>;
@@ -1460,6 +1468,9 @@
 	status = "okay";
 	interrupt-gpios = <&gpio  GPIOX_7  GPIO_ACTIVE_HIGH>;
 	power_on-gpios = <&gpio   GPIOX_6  GPIO_ACTIVE_HIGH>;
+	wifi_static_buf = <2>;
+	pinctrl-0 = <&pwm_e_pins1>;
+	pinctrl-names = "default";
 };
 
 &aml_bt {
@@ -1496,6 +1507,10 @@
 		&dvfs666_cfg
 		&dvfs850_cfg
 		&dvfs850_cfg>;
+};
+
+&ge2d {
+	memory-region = <&ge2d_cma_reserved>;
 };
 
 &vrtc {
