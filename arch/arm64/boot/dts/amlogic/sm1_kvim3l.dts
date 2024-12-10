@@ -1821,6 +1821,10 @@
 	status = "okay";
 };
 
+&uart_C {
+	status = "disabled";
+};
+
 /*if you want to use vdin just modify status to "okay"*/
 &vdin0 {
 	memory-region = <&vdin0_cma_reserved>;
