@@ -12,8 +12,9 @@
 #include "meson-ir-map-linux.dtsi"
 
 / {
-	amlogic-dt-id = "sm1_ac200_2g";
-	compatible = "sm1_ac200_2g";
+	model = "Khadas VIM3L";
+	amlogic-dt-id = "sm1_kvim3l";
+	compatible = "sm1_kvim3l";
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
 	#size-cells = <2>;
@@ -33,6 +34,9 @@
 		i2c4 = &i2c_AO;
 		spi1 = &spicc0;
 		spi2 = &spicc1;
+		mmc0 = &sd_emmc_c;
+		mmc1 = &sd_emmc_b;
+		mmc2 = &sd_emmc_a;
 	};
 
 	memory@00000000 {
