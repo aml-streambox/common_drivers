@@ -1300,6 +1300,12 @@
 		#gpio-cells = <2>;
 		status = "okay";
 	};
+
+	hym8563-rtc@51 {
+		compatible = "haoyu,hym8563";
+		reg = <0x51>;
+	};
+
 	khadas-mcu@18 {
 		compatible = "khadas-mcu";
 		reg = <0x18>;
@@ -2057,5 +2063,8 @@
 
 &wdt {
 	amlogic,feed_watchdog_mode = <0>; /* 0:sysfs,1:kernel */
+	status = "disabled";
+};
+&vrtc {
 	status = "disabled";
 };

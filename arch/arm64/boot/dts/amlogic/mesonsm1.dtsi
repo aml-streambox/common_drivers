@@ -325,7 +325,7 @@
 		#clock-cells = <0>;
 	};
 
-	rtc{
+	vrtc: rtc{
 		compatible = "amlogic,meson-vrtc";
 		reg = <0x0 0xff8000a8 0x0 0x4>;
 		mboxes = <&mbox_pl0 SM1_REE2AO_VRTC>;
