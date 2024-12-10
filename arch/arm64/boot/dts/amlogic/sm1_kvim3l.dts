@@ -2026,3 +2026,8 @@
 		};
 	};
 };
+
+&wdt {
+	amlogic,feed_watchdog_mode = <0>; /* 0:sysfs,1:kernel */
+	status = "disabled";
+};
