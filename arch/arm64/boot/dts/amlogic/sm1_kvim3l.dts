@@ -689,7 +689,7 @@
 			};
 			tdmbcodec: codec {
 				sound-dai = <&dummy_codec
-				&amlogic_codec &ad82584f_62>;
+				&amlogic_codec>;
 			};
 		};
 
@@ -1297,14 +1297,20 @@
 			b_io_number = <11>;
 		};
 	};
-	/* for ref board */
-	ad82584f_62: ad82584f_62@31 {
-		compatible = "ESMT, ad82584f";
-		#sound-dai-cells = <0>;
-		reg = <0x31>;
+};
+
+&i2c_AO {
+	status = "okay";
+	pinctrl-names="default";
+	pinctrl-0=<&ao_i2c_master_pins1>;
+	clock-frequency = <100000>; /* default 100k */
+
+	gpio_expander: gpio-controller@20 {
+		compatible = "ti,tca6408";
+		reg = <0x20>;
+		gpio-controller;
+		#gpio-cells = <2>;
 		status = "okay";
-		reset_pin = <&gpio GPIOA_5 0>;
-		no_mclk;
 	};
 };
 
