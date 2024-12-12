@@ -189,7 +189,7 @@
 		vm0_cma_reserved:linux,vm0_cma {
 			compatible = "shared-dma-pool";
 			reusable;
-			size = <0x0 0x2000000>;
+			size = <0x0 0x4000000>;
 			alignment = <0x0 0x400000>;
 		};
 	};
@@ -221,6 +221,7 @@
 		status = "okay";
 		reset-gpios = <&gpio GPIOX_17 GPIO_ACTIVE_HIGH>;
 		hostwake-gpios = <&gpio GPIOX_19 GPIO_ACTIVE_HIGH>;
+		power_down_disable = <1>;
 	};
 
 	wifi{
@@ -1207,6 +1208,7 @@
 };
 
 &drm_subsystem {
+	crtc_masks = <2 1 1>;
 	dummyl_from_hdmitx = /bits/ 8  <1>;
 };
 
@@ -1846,6 +1848,7 @@
 
 &uart_A {
 	status = "okay";
+	uart_for_bt = <1>;
 };
 
 &uart_C {
