@@ -1674,7 +1674,7 @@
 }; /* end of audiobus */
 
 &earc {
-	status = "disabled";
+	status = "okay";
 };
 
 &pinctrl_periphs {
