@@ -446,7 +446,7 @@ void set_sc2_hpll_clk_out(unsigned int frac_rate, unsigned int clk)
 		HDMITX_DEBUG("HPLL: 0x%x\n", hd_read_reg(P_ANACTRL_HDMIPLL_CTRL0));
 		break;
 	default:
-		HDMITX_INFO("error hpll clk: %d\n", clk);
+		HDMITX_INFO("auto setup hpll clk: %d\n", clk);
 		s4_auto_set_hpll(clk);
 		break;
 	}

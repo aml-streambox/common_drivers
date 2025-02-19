@@ -353,6 +353,7 @@ void set21_t7_hpll_clk_out(u32 frac_rate, u32 clk)
 		HDMITX_INFO("HPLL: 0x%x\n", hd21_read_reg(ANACTRL_HDMIPLL_CTRL0));
 		break;
 	default:
+		HDMITX_INFO("auto setup hpll clk: %d\n", clk);
 		t7_auto_set_hpll(clk);
 		break;
 	}

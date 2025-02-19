@@ -542,7 +542,7 @@ void set_g12a_hpll_clk_out(unsigned int frac_rate, unsigned int clk)
 		HDMITX_INFO("HPLL: 0x%x\n", hd_read_reg(P_HHI_HDMI_PLL_CNTL0));
 		break;
 	default:
-		HDMITX_INFO("error hpll clk: %d\n", clk);
+		HDMITX_INFO("auto setup hpll clk: %d\n", clk);
 		g12a_auto_set_hpll(clk);
 		break;
 	}
