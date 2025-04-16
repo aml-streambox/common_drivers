@@ -35,6 +35,8 @@
 #define V4L2_CID_AML_ADDRESS         (V4L2_CID_AML_BASE + 0x005)
 #define V4L2_CID_AML_ADAP_OFFSET     (V4L2_CID_AML_BASE + 0x006)
 #define V4L2_CID_AML_CSI_LANES       (V4L2_CID_AML_BASE + 0x007)
+#define V4L2_CID_AML_CLOCK_MODE      (V4L2_CID_AML_BASE + 0x008)
+#define V4L2_CID_AML_VTS             (V4L2_CID_AML_BASE + 0x009)
 
 struct emb_ops_t {
 	void (*emb_cfg_buf)(void *edev, u32 eaddr);

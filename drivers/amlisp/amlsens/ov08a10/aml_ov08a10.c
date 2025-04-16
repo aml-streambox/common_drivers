@@ -175,12 +175,13 @@ static int ov08a10_set_gain(struct ov08a10 *ov08a10, u32 value)
 {
 	int ret;
 	ret = ov08a10_write_reg(ov08a10, OV08A10_GAIN, (value >> 8) & 0xFF);
+	//dev_err(ov08a10->dev, "OV08A10_GAIN = %d\n",value);
+	
 	if (ret)
 		dev_err(ov08a10->dev, "Unable to write gain_H\n");
 	ret = ov08a10_write_reg(ov08a10, OV08A10_GAIN_L, value & 0xFF);
 	if (ret)
 		dev_err(ov08a10->dev, "Unable to write gain_L\n");
-
 	return ret;
 }
 
@@ -196,21 +197,32 @@ static int ov08a10_set_exposure(struct ov08a10 *ov08a10, u32 value)
 	return ret;
 }
 
-static int ov08a10_set_fps(struct ov08a10 *ov08a10, u32 value)
+static int ov08a10_set_vts(struct ov08a10 *ov08a10, u32 value)
 {
 	u32 vts = 0;
 	u8 vts_h, vts_l;
+	int ret = 0;
 
-	dev_info(ov08a10->dev, "ov08a10_set_fps = %d \n", value);
+	//dev_err(ov08a10->dev, "get vts 0x%x, dec: %d\n", value, value);
 
-	vts = 30 * 2314 / value;
-	vts_h = (vts >> 8) & 0x7f;
+	vts = value;
+	vts_h = (vts >> 8) & 0xff;
 	vts_l = vts & 0xff;
 
-	ov08a10_write_reg(ov08a10, 0x380e, vts_h);
-	ov08a10_write_reg(ov08a10, 0x380f, vts_l);
+	ret = ov08a10_write_reg(ov08a10, 0x380e, vts_h);
+	if (ret) {
+		dev_err(ov08a10->dev, "Error setting vts register, line %d\n", __LINE__);
+		goto ERR;
+	}
 
-	return 0;
+	ret = ov08a10_write_reg(ov08a10, 0x380f, vts_l);
+	if (ret) {
+		dev_err(ov08a10->dev, "Error setting vts register, line %d\n", __LINE__);
+		goto ERR;
+	}
+
+ERR:
+	return ret;
 }
 
 /* Stop streaming */
@@ -245,7 +257,10 @@ static int ov08a10_set_ctrl(struct v4l2_ctrl *ctrl)
 		ov08a10->enWDRMode = ctrl->val;
 		break;
 	case V4L2_CID_AML_ORIG_FPS:
-		ret = ov08a10_set_fps(ov08a10, ctrl->val);
+		//ret = ov08a10_set_fps(ov08a10, ctrl->val);
+		break;
+	case V4L2_CID_AML_VTS:
+		ret = ov08a10_set_vts(ov08a10, ctrl->val);
 		break;
 	default:
 		dev_err(ov08a10->dev, "Error ctrl->id %u, flag 0x%lx\n",
@@ -562,6 +577,7 @@ int ov08a10_power_on(struct device *dev, struct sensor_gpio *gpio)
 	ret = mclk_enable(dev,24000000);
 	if (ret < 0 )
 		dev_err(dev, "set mclk fail\n");
+
 	udelay(30);
 
 	// 30ms
@@ -696,14 +712,26 @@ static struct v4l2_ctrl_config nlane_cfg = {
 	.def = 4,
 };
 
+static struct v4l2_ctrl_config vts_cfg = {
+	.ops = &ov08a10_ctrl_ops,
+	.id = V4L2_CID_AML_VTS,
+	.name = "sensor vts",
+	.type = V4L2_CTRL_TYPE_INTEGER,
+	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE,
+	.min = 1,
+	.max = 0xffff,
+	.step = 1,
+	.def = 2314, //sensor vmax register[0x380e-0x380f]
+};
+
 static int ov08a10_ctrls_init(struct ov08a10 *ov08a10)
 {
 	int rtn = 0;
 
-	v4l2_ctrl_handler_init(&ov08a10->ctrls, 7);
+	v4l2_ctrl_handler_init(&ov08a10->ctrls, 8);
 
 	v4l2_ctrl_new_std(&ov08a10->ctrls, &ov08a10_ctrl_ops,
-				V4L2_CID_GAIN, 0, 0xF0, 1, 0);
+				V4L2_CID_GAIN, 0, 0xffff, 1, 0);
 
 	v4l2_ctrl_new_std(&ov08a10->ctrls, &ov08a10_ctrl_ops,
 				V4L2_CID_EXPOSURE, 0, 0xffff, 1, 0);
@@ -730,6 +758,7 @@ static int ov08a10_ctrls_init(struct ov08a10 *ov08a10)
 	ov08a10->wdr = v4l2_ctrl_new_custom(&ov08a10->ctrls, &wdr_cfg, NULL);
 
 	v4l2_ctrl_new_custom(&ov08a10->ctrls, &fps_cfg, NULL);
+	v4l2_ctrl_new_custom(&ov08a10->ctrls, &vts_cfg, NULL);
 
 	ov08a10->sd.ctrl_handler = &ov08a10->ctrls;
 
@@ -870,10 +899,10 @@ int ov08a10_sensor_id(struct i2c_client *client)
 	id |= val;
 
 	if (id != OV08A10_ID) {
-		dev_err(&client->dev, "Failed to get ov08a10 id: 0x%x\n", id);
+		dev_info(&client->dev, "Failed to get ov08a10 id: 0x%x\n", id);
 		return rtn;
 	} else {
-		dev_info(&client->dev, "success get ov08a10 id 0x%x", id);
+		dev_err(&client->dev, "success get ov08a10 id 0x%x", id);
 	}
 
 	return 0;

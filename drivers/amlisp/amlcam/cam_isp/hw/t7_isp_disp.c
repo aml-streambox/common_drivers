@@ -598,7 +598,7 @@ void isp_disp_set_csc2_fmt(struct isp_dev_t *isp_dev, u32 idx, struct aml_format
 		return;
 #endif
 
-	isp_reg_update_bits(isp_dev, DISP0_TOP_TOP_CTRL + (idx * 0x100), 0, 1, 1);
+	isp_reg_update_bits(isp_dev, DISP0_TOP_TOP_CTRL + ((idx * 0x100) << 2), 0, 1, 1);
 
 	if (!(fmt->code == V4L2_PIX_FMT_RGB24 ||
 		fmt->code == V4L2_PIX_FMT_BGR24)) {
@@ -607,35 +607,35 @@ void isp_disp_set_csc2_fmt(struct isp_dev_t *isp_dev, u32 idx, struct aml_format
 	}
 
 	val = (0 << 16) | (0x1e00 << 0);
-	isp_reg_write(isp_dev, DISP0_CSC2_OFFSET_INP01 + (idx * 0x100), val);
+	isp_reg_write(isp_dev, DISP0_CSC2_OFFSET_INP01 + ((idx * 0x100) << 2), val);
 
 	val = (0x1e00 << 0);
-	isp_reg_write(isp_dev, DISP0_CSC2_OFFSET_INP2 + (idx * 0x100), val);
+	isp_reg_write(isp_dev, DISP0_CSC2_OFFSET_INP2 + ((idx * 0x100) << 2), val);
 
 	val = (256 << 16) | (454 << 0);
-	isp_reg_write(isp_dev, DISP0_CSC2_COEF_00_01 + (idx * 0x100), val);
+	isp_reg_write(isp_dev, DISP0_CSC2_COEF_00_01 + ((idx * 0x100) << 2), val);
 
 	val = (0 << 16) | (256 << 0);
-	isp_reg_write(isp_dev, DISP0_CSC2_COEF_02_10 + (idx * 0x100), val);
+	isp_reg_write(isp_dev, DISP0_CSC2_COEF_02_10 + ((idx * 0x100) << 2), val);
 
 	val = (0x1fa8 << 16) | (0x1f49 << 0);
-	isp_reg_write(isp_dev, DISP0_CSC2_COEF_11_12 + (idx * 0x100), val);
+	isp_reg_write(isp_dev, DISP0_CSC2_COEF_11_12 + ((idx * 0x100) << 2), val);
 
 	val = (256 << 16) | (0 << 0);
-	isp_reg_write(isp_dev, DISP0_CSC2_COEF_20_21 + (idx * 0x100), val);
+	isp_reg_write(isp_dev, DISP0_CSC2_COEF_20_21 + ((idx * 0x100) << 2), val);
 
 	val = (359 << 0);
-	isp_reg_write(isp_dev, DISP0_CSC2_COEF_22 + (idx * 0x100), val);
+	isp_reg_write(isp_dev, DISP0_CSC2_COEF_22 + ((idx * 0x100) << 2), val);
 
 	val = (0 << 16) | (0 << 0);
-	isp_reg_write(isp_dev, DISP0_CSC2_OFFSET_OUP01 + (idx * 0x100), val);
+	isp_reg_write(isp_dev, DISP0_CSC2_OFFSET_OUP01 + ((idx * 0x100) << 2), val);
 
 	val = (0 << 16) | (0 << 0);
-	isp_reg_write(isp_dev, DISP0_CSC2_OFFSET_OUP2 + (idx * 0x100), val);
+	isp_reg_write(isp_dev, DISP0_CSC2_OFFSET_OUP2 + ((idx * 0x100) << 2), val);
 
-	isp_reg_write(isp_dev, ISP_DISP0_TOP_HW_RE + (idx * 0x100), 0x24);
-	isp_reg_update_bits(isp_dev, ISP_DISP0_TOP_TOP_REG + (idx * 0x100), 0, 6, 3);
-	isp_reg_update_bits(isp_dev, DISP0_TOP_TOP_CTRL + (idx * 0x100), 1, 1, 1);
+	isp_reg_write(isp_dev, ISP_DISP0_TOP_HW_RE + ((idx * 0x100) << 2), 0x24);
+	isp_reg_update_bits(isp_dev, ISP_DISP0_TOP_TOP_REG + ((idx * 0x100) << 2), 0, 6, 3);
+	isp_reg_update_bits(isp_dev, DISP0_TOP_TOP_CTRL + ((idx * 0x100) << 2), 1, 1, 1);
 
 	pr_info("rgb fmt need to set csc2\n");
 }

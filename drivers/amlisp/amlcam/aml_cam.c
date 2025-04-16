@@ -601,6 +601,7 @@ static int cam_power_suspend(struct device *dev)
 		case AML_CAM_2:
 		case AML_CAM_3:
 			csiphy_subdev_suspend(&cam_dev->csiphy_dev);
+			adap_subdev_suspend(&cam_dev->adap_dev);
 			isp_subdev_suspend(&cam_dev->isp_dev);
 		break;
 		case AML_CAM_4:
@@ -628,6 +629,7 @@ static int cam_power_resume(struct device *dev)
 		case AML_CAM_2:
 		case AML_CAM_3:
 			csiphy_subdev_resume(&cam_dev->csiphy_dev);
+			adap_subdev_resume(&cam_dev->adap_dev);
 			isp_subdev_resume(&cam_dev->isp_dev);
 		break;
 		case AML_CAM_4:
@@ -641,6 +643,11 @@ static int cam_power_resume(struct device *dev)
 	dev_info(dev, "resume\n");
 
 	return 0;
+}
+
+static void cam_power_shutdown(struct platform_device *pdev)
+{
+	cam_power_suspend(&pdev->dev);
 }
 
 static const struct dev_pm_ops cam_pm_ops = {
@@ -660,6 +667,7 @@ MODULE_DEVICE_TABLE(of, cam_of_table);
 static struct platform_driver cam_driver = {
 	.probe = cam_probe,
 	.remove = cam_remove,
+	.shutdown = cam_power_shutdown,
 	.driver = {
 		.name = "aml_camera",
 		.pm = &cam_pm_ops,
