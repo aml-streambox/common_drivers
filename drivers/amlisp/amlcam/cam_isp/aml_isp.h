@@ -171,6 +171,7 @@ struct isp_dev_t {
 	struct aml_buffer wreg_buff;
 	struct aml_buffer ptnr_buff;
 	struct aml_buffer mcnr_buff;
+	struct aml_buffer radi_buff;
 
 	const struct isp_dev_ops *ops;
 	const struct emb_ops_t *emb_ops;

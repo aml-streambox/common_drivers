@@ -457,16 +457,20 @@ static int csiphy_subdev_power_on(struct csiphy_dev_t *csiphy_dev)
 	pm_runtime_enable(csiphy_dev->dev);
 	pm_runtime_get_sync(csiphy_dev->dev);
 
-	clk_set_rate(csiphy_dev->csiphy_clk, 200000000);
-	rtn = clk_prepare_enable(csiphy_dev->csiphy_clk);
-	if (rtn)
-		dev_err(csiphy_dev->dev, "Error to enable csiphy_clk\n");
+	if (!__clk_is_enabled(csiphy_dev->csiphy_clk)) {
+		clk_set_rate(csiphy_dev->csiphy_clk, 200000000);
+		rtn = clk_prepare_enable(csiphy_dev->csiphy_clk);
+		if (rtn)
+			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk\n");
+	}
 
-	clk_set_rate(csiphy_dev->csiphy_clk1, 200000000);
-	rtn = clk_prepare_enable(csiphy_dev->csiphy_clk1);
-	if (rtn)
-		dev_err(csiphy_dev->dev, "Error to enable csiphy_clk1n");
+	if (!__clk_is_enabled(csiphy_dev->csiphy_clk1)) {
 
+		clk_set_rate(csiphy_dev->csiphy_clk1, 200000000);
+		rtn = clk_prepare_enable(csiphy_dev->csiphy_clk1);
+		if (rtn)
+			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk1n");
+	}
 	return rtn;
 }
 
@@ -482,23 +486,35 @@ static void csiphy_subdev_power_off(struct csiphy_dev_t *csiphy_dev)
 
 void csiphy_subdev_suspend(struct csiphy_dev_t *csiphy_dev)
 {
-	clk_disable_unprepare(csiphy_dev->csiphy_clk);
+	if (__clk_is_enabled(csiphy_dev->csiphy_clk))
+		clk_disable_unprepare(csiphy_dev->csiphy_clk);
+
+	if (__clk_is_enabled(csiphy_dev->csiphy_clk1))
+		clk_disable_unprepare(csiphy_dev->csiphy_clk1);
 
 	pm_runtime_put_sync(csiphy_dev->dev);
 	pm_runtime_disable(csiphy_dev->dev);
+	dev_pm_domain_detach(csiphy_dev->dev, true);
 }
 
 int csiphy_subdev_resume(struct csiphy_dev_t *csiphy_dev)
 {
 	int rtn = 0;
+	dev_pm_domain_attach(csiphy_dev->dev, true);
 
 	pm_runtime_enable(csiphy_dev->dev);
 	pm_runtime_get_sync(csiphy_dev->dev);
 
-	rtn = clk_prepare_enable(csiphy_dev->csiphy_clk);
-	if (rtn)
-		dev_err(csiphy_dev->dev, "Error to enable csiphy_clk\n");
-
+	if (!__clk_is_enabled(csiphy_dev->csiphy_clk)) {
+		rtn = clk_prepare_enable(csiphy_dev->csiphy_clk);
+		if (rtn)
+			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk\n");
+	}
+	if (!__clk_is_enabled(csiphy_dev->csiphy_clk1)) {
+		rtn = clk_prepare_enable(csiphy_dev->csiphy_clk1);
+		if (rtn)
+			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk1\n");
+	}
 	return rtn;
 }
 

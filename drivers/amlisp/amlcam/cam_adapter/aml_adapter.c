@@ -752,16 +752,20 @@ static int adap_subdev_ctrls_init(struct adapter_dev_t *adap_dev)
 static int adap_subdev_power_on(struct adapter_dev_t *adap_dev)
 {
 	int rtn = 0;
+
 #ifndef T7C_CHIP
 	rtn = clk_prepare_enable(adap_dev->vapb_clk);
 	if (rtn)
 		pr_err("Error to enable vapb clk\n");
 #endif
-	clk_set_rate(adap_dev->adap_clk, 666666666);
-	rtn = clk_prepare_enable(adap_dev->adap_clk);
-	if (rtn)
-		dev_err(adap_dev->dev, "Error to enable adap_clk(isp) clk\n");
+	if (!__clk_is_enabled(adap_dev->adap_clk)) {
 
+		clk_set_rate(adap_dev->adap_clk, 666666666);
+		rtn = clk_prepare_enable(adap_dev->adap_clk);
+		if (rtn)
+			dev_err(adap_dev->dev, "Error to enable adap_clk(isp) clk\n");
+
+	}
 	return rtn;
 }
 
@@ -770,6 +774,25 @@ static void adap_subdev_power_off(struct adapter_dev_t *adap_dev)
 	if (adap_dev->index == AML_CAM_4) {
 		clk_disable_unprepare(adap_dev->wrmif_clk);
 	}
+}
+
+void adap_subdev_suspend(struct adapter_dev_t *adap_dev)
+{
+	if (__clk_is_enabled(adap_dev->adap_clk))
+		clk_disable_unprepare(adap_dev->adap_clk);
+	dev_info(adap_dev->dev, "%s out \n", __func__);
+}
+
+int adap_subdev_resume(struct adapter_dev_t *adap_dev)
+{
+	int rtn = 0;
+
+	if (!__clk_is_enabled(adap_dev->adap_clk)) {
+		rtn = clk_prepare_enable(adap_dev->adap_clk);
+		if (rtn)
+			dev_err(adap_dev->dev, "Error to enable adap_clk(isp) clk\n");
+	}
+	return rtn;
 }
 
 static int adapter_proc_show(struct seq_file *proc_entry, void *arg ) {
