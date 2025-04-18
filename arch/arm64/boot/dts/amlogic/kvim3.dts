@@ -94,9 +94,9 @@
 		logo_reserved:linux,meson-fb {
 			compatible = "amlogic, meson-fb";
 			reusable;
-			size = <0x0 0x800000>;
+			size = <0x0 0x2400000>;
 			alignment = <0x0 0x400000>;
-			reg = <0x0 0x3e800000 0x0 0x800000>;
+			reg = <0x0 0x3e800000 0x0 0x2400000>;
 		};
 		ion_cma_reserved:linux,ion-dev {
 			compatible = "shared-dma-pool";
