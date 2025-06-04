@@ -3,6 +3,8 @@
   drm_wait_one_vblank
   drm_get_format_info
   drm_format_info_min_pitch
+  drm_crtc_vblank_count
+  drm_crtc_vblank_put
 
 # amlogic-memory-debug.ko
   bpf_trace_run9

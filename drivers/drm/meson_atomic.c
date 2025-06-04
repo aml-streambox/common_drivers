@@ -106,57 +106,80 @@ static void meson_commit_reenter_dec(struct meson_drm *priv,
 		crtc_index, atomic_read(&amcrtc->commit_num), flag);
 }
 
-static void commit_tail(struct drm_atomic_state *old_state)
+/**
+ * drm_crtc_commit_wait - Waits for a commit to complete
+ * @commit: &drm_crtc_commit to wait for
+ *
+ * Waits for a given &drm_crtc_commit to be programmed into the
+ * hardware and flipped to.
+ *
+ * Returns:
+ *
+ * 0 on success, a negative error code otherwise.
+ */
+static int meson_drm_crtc_commit_wait(struct drm_crtc_commit *commit)
 {
-	struct drm_device *dev = old_state->dev;
-	const struct drm_mode_config_helper_funcs *funcs;
-	struct drm_crtc_state *new_crtc_state;
+	/*
+	 * Amlogic modify.
+	 * timeout is 10s (10 * HZ) in drm framework, and  it is too long in HPD case,
+	 * so change it to be 100ms (HZ / 10).
+	 */
+	unsigned long timeout = HZ / 10;
+	int ret;
+
+	if (!commit)
+		return 0;
+
+	ret = wait_for_completion_timeout(&commit->hw_done, timeout);
+	if (!ret) {
+		DRM_ERROR("hw_done timed out\n");
+		return -ETIMEDOUT;
+	}
+
+	/*
+	 * Currently no support for overwriting flips, hence
+	 * stall for previous one to execute completely.
+	 */
+	ret = wait_for_completion_timeout(&commit->flip_done, timeout);
+	if (!ret) {
+		DRM_ERROR("flip_done timed out\n");
+		return -ETIMEDOUT;
+	}
+
+	return 0;
+}
+
+static void meson_drm_atomic_helper_wait_for_dependencies(struct drm_atomic_state *old_state)
+{
 	struct drm_crtc *crtc;
-	ktime_t start;
-	s64 commit_time_ms;
-	unsigned int i, new_self_refresh_mask = 0;
+	struct drm_crtc_state *old_crtc_state;
+	struct drm_plane *plane;
+	struct drm_plane_state *old_plane_state;
+	struct drm_connector *conn;
+	struct drm_connector_state *old_conn_state;
+	int i;
+	long ret;
 
-	funcs = dev->mode_config.helper_private;
+	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
+		ret = meson_drm_crtc_commit_wait(old_crtc_state->commit);
+		if (ret)
+			DRM_ERROR("[CRTC:%d:%s] commit wait timed out\n",
+				  crtc->base.id, crtc->name);
+	}
 
-	/*
-	 * We're measuring the _entire_ commit, so the time will vary depending
-	 * on how many fences and objects are involved. For the purposes of self
-	 * refresh, this is desirable since it'll give us an idea of how
-	 * congested things are. This will inform our decision on how often we
-	 * should enter self refresh after idle.
-	 *
-	 * These times will be averaged out in the self refresh helpers to avoid
-	 * overreacting over one outlier frame
-	 */
-	start = ktime_get();
+	for_each_old_connector_in_state(old_state, conn, old_conn_state, i) {
+		ret = meson_drm_crtc_commit_wait(old_conn_state->commit);
+		if (ret)
+			DRM_ERROR("[CONNECTOR:%d:%s] commit wait timed out\n",
+				  conn->base.id, conn->name);
+	}
 
-	drm_atomic_helper_wait_for_fences(dev, old_state, false);
-
-	drm_atomic_helper_wait_for_dependencies(old_state);
-
-	/*
-	 * We cannot safely access new_crtc_state after
-	 * drm_atomic_helper_commit_hw_done() so figure out which crtc's have
-	 * self-refresh active beforehand:
-	 */
-	for_each_new_crtc_in_state(old_state, crtc, new_crtc_state, i)
-		if (new_crtc_state->self_refresh_active)
-			new_self_refresh_mask |= BIT(i);
-
-	if (funcs && funcs->atomic_commit_tail)
-		funcs->atomic_commit_tail(old_state);
-	else
-		drm_atomic_helper_commit_tail(old_state);
-
-	commit_time_ms = ktime_ms_delta(ktime_get(), start);
-	if (commit_time_ms > 0)
-		drm_self_refresh_helper_update_avg_times(old_state,
-						 (unsigned long)commit_time_ms,
-						 new_self_refresh_mask);
-
-	drm_atomic_helper_commit_cleanup_done(old_state);
-
-	drm_atomic_state_put(old_state);
+	for_each_old_plane_in_state(old_state, plane, old_plane_state, i) {
+		ret = meson_drm_crtc_commit_wait(old_plane_state->commit);
+		if (ret)
+			DRM_ERROR("[PLANE:%d:%s] commit wait timed out\n",
+				  plane->base.id, plane->name);
+	}
 }
 
 static void meson_commit_tail(struct drm_atomic_state *old_state)
@@ -185,7 +208,7 @@ static void meson_commit_tail(struct drm_atomic_state *old_state)
 
 	drm_atomic_helper_wait_for_fences(dev, old_state, false);
 
-	drm_atomic_helper_wait_for_dependencies(old_state);
+	meson_drm_atomic_helper_wait_for_dependencies(old_state);
 
 	/*
 	 * We cannot safely access new_crtc_state after
@@ -548,7 +571,7 @@ int meson_atomic_commit(struct drm_device *dev,
 		kthread_queue_work(worker, &work_item->kthread_work);
 	} else {
 		meson_commit_reenter_inc(priv, crtc_index, BLOCK_MODE);
-		commit_tail(state);
+		meson_commit_tail(state);
 		meson_commit_reenter_dec(priv, crtc_index, BLOCK_MODE);
 	}
 
@@ -559,6 +582,71 @@ err:
 		kfree(work_item);
 	drm_atomic_helper_cleanup_planes(dev, state);
 	return ret;
+}
+
+/**
+ * drm_atomic_helper_wait_for_vblanks - wait for vblank on CRTCs
+ * @dev: DRM device
+ * @old_state: atomic state object with old state structures
+ *
+ * Helper to, after atomic commit, wait for vblanks on all affected
+ * CRTCs (ie. before cleaning up old framebuffers using
+ * drm_atomic_helper_cleanup_planes()). It will only wait on CRTCs where the
+ * framebuffers have actually changed to optimize for the legacy cursor and
+ * plane update use-case.
+ *
+ * Drivers using the nonblocking commit tracking support initialized by calling
+ * drm_atomic_helper_setup_commit() should look at
+ * drm_atomic_helper_wait_for_flip_done() as an alternative.
+ */
+static void
+meson_drm_atomic_helper_wait_for_vblanks(struct drm_device *dev,
+		struct drm_atomic_state *old_state)
+{
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *old_crtc_state, *new_crtc_state;
+	int i, ret;
+	unsigned int crtc_mask = 0;
+
+	 /*
+	  * Legacy cursor ioctls are completely unsynced, and userspace
+	  * relies on that (by doing tons of cursor updates).
+	  */
+	if (old_state->legacy_cursor_update)
+		return;
+
+	for_each_oldnew_crtc_in_state(old_state, crtc, old_crtc_state, new_crtc_state, i) {
+		if (!new_crtc_state->active)
+			continue;
+
+		ret = drm_crtc_vblank_get(crtc);
+		if (ret != 0)
+			continue;
+
+		crtc_mask |= drm_crtc_mask(crtc);
+		old_state->crtcs[i].last_vblank_count = drm_crtc_vblank_count(crtc);
+	}
+
+	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
+		if (!(crtc_mask & drm_crtc_mask(crtc)))
+			continue;
+
+		ret = wait_event_timeout(dev->vblank[i].queue,
+				old_state->crtcs[i].last_vblank_count !=
+					drm_crtc_vblank_count(crtc),
+				msecs_to_jiffies(100));
+
+		/*
+		 * amlogic modify, WARN api print so many messages.
+		 * it will lead to system high latency occasionally.
+		 * just print the timed out message is enough
+		 */
+		if (!ret)
+			DRM_WARN("[CRTC:%d:%s] vblank wait timed out\n", crtc->base.id,
+				 crtc->name);
+
+		drm_crtc_vblank_put(crtc);
+	}
 }
 
 void meson_atomic_helper_commit_tail_rpm(struct drm_atomic_state *old_state)
@@ -578,7 +666,7 @@ void meson_atomic_helper_commit_tail_rpm(struct drm_atomic_state *old_state)
 	drm_atomic_helper_commit_hw_done(old_state);
 
 	if (!priv->disable_video_plane)
-		drm_atomic_helper_wait_for_vblanks(dev, old_state);
+		meson_drm_atomic_helper_wait_for_vblanks(dev, old_state);
 	priv->disable_video_plane = 0;
 
 	drm_atomic_helper_cleanup_planes(dev, old_state);
@@ -606,6 +694,6 @@ void meson_atomic_helper_commit_tail(struct drm_atomic_state *old_state)
 	}
 
 	/*use */
-	drm_atomic_helper_commit_tail_rpm(old_state);
+	meson_atomic_helper_commit_tail_rpm(old_state);
 }
 
