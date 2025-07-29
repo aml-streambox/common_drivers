@@ -166,19 +166,10 @@ struct sensor_subdev sd_imx585 = {
 };
 
 struct sensor_subdev *aml_sensors[] = {
-	&sd_imx290,
-	&sd_imx415,
-	&sd_ov13b10,
-	&sd_imx577,
-	&sd_imx378,
 	&sd_ov08a10,
-	&sd_ov5640,
-	&sd_ov13855,
-	&sd_lt6911c,
-	&sd_ov16a1q,
-	&sd_imx335,
 	&sd_imx678,
 	&sd_imx585,
+	&sd_imx415,
 };
 
 
