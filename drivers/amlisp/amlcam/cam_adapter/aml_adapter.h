@@ -222,8 +222,10 @@ struct adapter_dev_ops {
 	int (*hw_wdr_cfg_buf)(void *a_dev);
 	void (*hw_irq_en)(void *a_dev);
 	void (*hw_irq_dis)(void *a_dev);
+	void (*hw_clear_irq)(void *a_dev);
 	void (*hw_offline_mode)(void *a_dev);
 	u32 *(*hw_fe_status)(void *a_dev);
+	void (*hw_fe_set_byte_order)(void *a_dev, u32 byte_order);
 };
 
 struct adapter_dev_t {
@@ -233,9 +235,11 @@ struct adapter_dev_t {
 	struct device *dev;
 	struct platform_device *pdev;
 
-	struct clk *wrmif_clk;
-    struct clk *adap_clk;
-    struct clk *vapb_clk;
+	struct clk *adap_clk; // for t7c
+#ifndef T7C_CHIP
+	struct clk *vapb_clk; // for c3
+#endif
+
 	int irq;
 	spinlock_t irq_lock;
 	struct tasklet_struct irq_tasklet;
@@ -260,10 +264,14 @@ struct adapter_dev_t {
 	const struct adapter_dev_ops *ops;
 
 	struct aml_video video[AML_ADAP_STREAM_MAX];
+	struct timer_list fe_check_timer;
 };
 
 void adap_subdev_suspend(struct adapter_dev_t *adap_dev);
 int adap_subdev_resume(struct adapter_dev_t *adap_dev);
+
+void adap_subdev_power_off(struct adapter_dev_t *adap_dev);
+int adap_subdev_power_on(struct adapter_dev_t *adap_dev);
 
 int aml_adap_subdev_init(void *c_dev);
 void aml_adap_subdev_deinit(void *c_dev);

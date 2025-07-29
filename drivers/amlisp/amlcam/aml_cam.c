@@ -30,6 +30,11 @@
 
 #include "aml_cam.h"
 
+#ifdef DEBUG_TEST_MIPI_RESET
+extern int debug_test_mipi_reset;
+#endif
+
+
 static int cam_subdevs_register(struct cam_device *cam_dev)
 {
 	int rtn;
@@ -372,6 +377,8 @@ static int cam_async_notifier_complete(struct v4l2_async_notifier *async)
 
 	dev_info(cam_dev->dev, "Success async notifier complete\n");
 
+	dev_info(cam_dev->dev, "dq check timer setup\n");
+
 error_return:
 
 	return rtn;
@@ -589,7 +596,7 @@ static int cam_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int cam_power_suspend(struct device *dev)
+static int cam_suspend(struct device *dev)
 {
 	struct cam_device *cam_dev;
 
@@ -617,7 +624,7 @@ static int cam_power_suspend(struct device *dev)
 	return 0;
 }
 
-static int cam_power_resume(struct device *dev)
+static int cam_resume(struct device *dev)
 {
 	struct cam_device *cam_dev;
 
@@ -645,16 +652,88 @@ static int cam_power_resume(struct device *dev)
 	return 0;
 }
 
-static void cam_power_shutdown(struct platform_device *pdev)
+static int cam_freeze(struct device *dev)
 {
-	cam_power_suspend(&pdev->dev);
+	// executed before creating a hibernation image
+	// should not change power state.
+	// save the device settings in memory to be used by restore.
+	struct cam_device *cam_dev;
+
+	dev_err(dev, "%s in", __func__);
+
+	cam_dev = dev_get_drvdata(dev);
+
+	csiphy_subdev_power_off(&cam_dev->csiphy_dev);
+	adap_subdev_power_off(&cam_dev->adap_dev);
+	isp_subdev_power_off(&cam_dev->isp_dev);
+
+	return 0;
 }
 
+static int cam_thaw(struct device *dev)
+{
+	// executed after creating a hibernation image
+	// Undo the changes made by the preceding @freeze().
+	// so the device can be operated in the same way as before the call to @freeze()
+	dev_err(dev, "%s in", __func__);
+
+	return 0;
+}
+
+static int cam_poweroff(struct device *dev)
+{
+	// executed after saving a hibernation image
+	dev_err(dev, "%s in", __func__);
+
+	return 0;
+}
+
+static int cam_restore(struct device *dev)
+{
+	// executed after restoring the contents of main
+	// memory from a hibernation image
+	struct cam_device *cam_dev;
+
+	dev_err(dev, "%s in", __func__);
+
+	cam_dev = dev_get_drvdata(dev);
+
+	csiphy_subdev_power_on(&cam_dev->csiphy_dev);
+	adap_subdev_power_on(&cam_dev->adap_dev);
+	isp_subdev_power_on(&cam_dev->isp_dev);
+
+	return 0;
+}
+
+static void cam_shutdown(struct platform_device *pdev)
+{
+	struct cam_device *cam_dev;
+	struct device *dev = &pdev->dev;
+
+	dev_err(dev, "%s in", __func__);
+
+	cam_dev = dev_get_drvdata(&pdev->dev);
+
+	// call xxx_deinit is more suitable?
+	csiphy_subdev_power_off(&cam_dev->csiphy_dev);
+	adap_subdev_power_off(&cam_dev->adap_dev);
+	isp_subdev_power_off(&cam_dev->isp_dev);
+}
+
+
 static const struct dev_pm_ops cam_pm_ops = {
-	.suspend = cam_power_suspend,
-	.resume = cam_power_resume,
-	.runtime_suspend = cam_power_suspend,
-	.runtime_resume = cam_power_resume,
+	// sleep
+	.suspend = cam_suspend,
+	.resume = cam_resume,
+	// hibernation
+	.freeze = cam_freeze,
+	.thaw = cam_thaw,
+	.poweroff = cam_poweroff,
+	.restore = cam_restore,
+	// runtime.
+	.runtime_suspend = cam_suspend,
+	.runtime_resume = cam_resume,
+
 };
 
 static const struct of_device_id cam_of_table[] = {
@@ -667,7 +746,7 @@ MODULE_DEVICE_TABLE(of, cam_of_table);
 static struct platform_driver cam_driver = {
 	.probe = cam_probe,
 	.remove = cam_remove,
-	.shutdown = cam_power_shutdown,
+	.shutdown = cam_shutdown,
 	.driver = {
 		.name = "aml_camera",
 		.pm = &cam_pm_ops,

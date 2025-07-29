@@ -68,7 +68,7 @@ struct imx335 {
 	int status;
 	struct mutex lock;
 
-	int flag_60hz;
+	int fps;
 };
 
 struct imx335_pixfmt {

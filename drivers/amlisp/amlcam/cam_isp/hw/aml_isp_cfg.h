@@ -352,6 +352,7 @@ typedef struct awb_req_info_s{
 	u32 awb_stat_ratio_mode;
 	u32 blc_ofst[5];
 	u32 awb_stat_switch;
+	u32 awb_stat_pack[2];
 } awb_req_info_t;
 
 typedef struct ae_req_info_s {
@@ -527,6 +528,13 @@ typedef struct aisp_wb_triangle_cfg_s {
 	u32 awb_stat_bg_high;
 } aisp_wb_triangle_cfg_t;
 
+typedef struct aisp_wb_roi_cfg_s {
+	u32 awb_xstart[2];
+	u32 awb_xsize[2];
+	u32 awb_ystart[2];
+	u32 awb_ysize[2];
+} aisp_wb_roi_cfg_t;
+
 typedef struct aisp_expo_mode_cfg_s {
 	u8 ae_stat_blk_weight[17*15];
 	u8 reserved;
@@ -589,7 +597,8 @@ typedef struct aisp_lut_fixed_cfg_s {
 	u32 decmp1_lut[129];
 	u32 eotf0_lut[33];
 	u32 eotf1_lut[129];
-	u32 lns_rad_lut129[129*4];
+	u32 lns_rad_lut129[65*4];
+	u32 lns_radext_lut129[65*8];
 	u32 lns_mesh_lut[32*32*4];
 	u32 pst_gamma_lut[129*4];
 	u32 rgb_gamma_lut[129]; // none
@@ -1167,6 +1176,7 @@ typedef union {
 		u64  aisp_wb_change   : 1;
 		u64  aisp_wb_luma     : 1;
 		u64  aisp_wb_triangle : 1;
+		u64  aisp_wb_roi      : 1;
 		u64  aisp_expo_mode   : 1;
 		u64  aisp_mesh        : 1;
 		u64  aisp_top         : 1;
@@ -1196,9 +1206,10 @@ typedef union {
 		u64  aisp_dhz         : 1;
 		u64  aisp_dhz_enhc    : 1;
 		u64  aisp_peaking     : 1;
+		u64  aisp_radial      : 1;
 		u64  aisp_misc        : 1;
 		u64  aisp_custom      : 1;
-		u64  bitRsv           : 29; /* H  ; [35:63] */
+		u64  bitRsv           : 27; /* H  ; [37:63] */
 	};
 }  aisp_param_ctrl;
 
@@ -1208,6 +1219,7 @@ typedef struct aisp_param_s{
 	aisp_wb_change_cfg_t      wb_change;
 	aisp_wb_luma_cfg_t        wb_luma;
 	aisp_wb_triangle_cfg_t    wb_triangle;
+	aisp_wb_roi_cfg_t         wb_roi;
 	aisp_expo_mode_cfg_t      expo_mode;
 
 	aisp_mesh_cfg_t           mesh_cfg;

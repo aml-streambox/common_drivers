@@ -274,24 +274,43 @@ static void lswb_rad_cfg_base(struct isp_dev_t *isp_dev, void *base)
 	aisp_base_cfg_t *base_cfg = base;
 	aisp_lut_fixed_cfg_t *lut_cfg = &base_cfg->fxlut_cfg;
 
+	val = ISP_ARRAY_SIZE(lut_cfg->lns_rad_lut129);
+
 	isp_hw_lut_wstart(isp_dev, LSWB_RAD_LUT_CFG);
 
 	isp_reg_write(isp_dev, ISP_LNS_RAD_LUT_ADDR, 0);
-	for (j = 0; j < 4; j++) {
-		for (i = 0; i < 64; i++) {
-			idx0 = (i * 2 + 0) * 4 + j;
-			idx1 = (i * 2 + 1) * 4 + j;
-			val = (lut_cfg->lns_rad_lut129[idx0] << 0) |
-				(lut_cfg->lns_rad_lut129[idx1] << 16);
-			isp_reg_write(isp_dev, ISP_LNS_RAD_LUT_DATA, val);
-		}
 
-		idx0 = 128 * 4 + j;
-		val = lut_cfg->lns_rad_lut129[idx0];
-		isp_reg_write(isp_dev, ISP_LNS_RAD_LUT_DATA, val);
-	}
+	for (i = 0; i < val; i++)
+		isp_reg_write(isp_dev, ISP_LNS_RAD_LUT_DATA, lut_cfg->lns_rad_lut129[i]);
 
 	isp_hw_lut_wend(isp_dev);
+}
+
+static void lswb_rad_cfg_ext(struct isp_dev_t *isp_dev, void *base)
+{
+#ifdef T7C_CHIP
+		u32 val = 0, len = 0;
+		aisp_base_cfg_t *base_cfg = base;
+		aisp_lut_fixed_cfg_t *lut_cfg = &base_cfg->fxlut_cfg;
+		u32 *ptr = (u32 *)isp_dev->radi_buff.vaddr[AML_PLANE_A];
+
+		len = ISP_ARRAY_SIZE(lut_cfg->lns_radext_lut129);
+
+		ptr[0] = 0;
+		ptr[1] = 0xfe3b77c0;
+		memcpy((void *)(ptr + 2), lut_cfg->lns_radext_lut129, len * 4);
+
+		val = (0 << 3)	| (1 << 2) | (0 << 1) | (1 << 0);
+		isp_hwreg_write(isp_dev, ISP_DMA_SRC1_CTL, val);
+
+		/* select task1 type and cmd length */
+		val = (1 << 31) | (1 << 30) | (len * 4 + 8 - 1);
+		isp_hwreg_write(isp_dev, ISP_DMA_SRC1_PING_TASK0, val);
+
+		/* config ping store addr */
+		val = isp_dev->radi_buff.addr[AML_PLANE_A];
+		isp_hwreg_write(isp_dev, ISP_DMA_SRC1_PING_CMD_ADDR0, val);
+#endif
 }
 
 uint32_t aisp_sqrt64( uint64_t arg )
@@ -326,6 +345,9 @@ static void lswb_rad_center_base(struct isp_dev_t *isp_dev, void *base)
 
 	isp_reg_update_bits(isp_dev, ISP_CUBIC_RAD_CENTER, center_x, 16, 16);
 	isp_reg_update_bits(isp_dev, ISP_CUBIC_RAD_CENTER, center_y, 0, 16);
+
+	isp_reg_update_bits(isp_dev, ISP_CUBIC_RAD_SCL0, rad_scale_x >> 4, 16, 16);
+	isp_reg_update_bits(isp_dev, ISP_CUBIC_RAD_SCL0, rad_scale_y >> 4, 0, 16);
 
 	isp_reg_update_bits(isp_dev, ISP_LSWB_RS_XSCALE, rad_scale_x, 0, 16);
 	isp_reg_update_bits(isp_dev, ISP_LSWB_RS_YSCALE, rad_scale_y, 0, 16);
@@ -642,6 +664,11 @@ void isp_lens_cfg_param(struct isp_dev_t *isp_dev, struct aml_buffer *buff)
 	if (param->pvalid.aisp_lns) {
 		lswb_rad_cfg_strength(isp_dev, &param->lns_cfg);
 		lswb_mesh_cfg_strength(isp_dev, &param->lns_cfg);
+	}
+
+	if (param->pvalid.aisp_radial) {
+		if (param->pvalid.aisp_base == 0)
+			lswb_rad_cfg_ext(isp_dev, &param->base_cfg);
 	}
 
 	if (param->pvalid.aisp_blc) {

@@ -16,7 +16,9 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 *
 */
-
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt)  "aml-pattern:%s:%d: " fmt, __func__, __LINE__
 
 #include <linux/io.h>
@@ -100,7 +102,7 @@ int aml_pattern_subdev_register(struct pattern_dev_t *pattern)
 	if (rtn)
 		goto error_rtn;
 
-	pr_info("PATTTERN%u: register subdev\n", pattern->index);
+	pr_info("PATTERN%u: register subdev\n", pattern->index);
 
 error_rtn:
 	return rtn;

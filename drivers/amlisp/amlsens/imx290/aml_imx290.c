@@ -147,9 +147,6 @@ static int imx290_write_reg(struct imx290 *imx290, u16 addr, u8 value)
 		}
 	}
 
-	if (ret)
-		dev_err(imx290->dev, "I2C write failed for addr: %x, ret %d\n", addr, ret);
-
 	return ret;
 }
 
@@ -162,8 +159,9 @@ static int imx290_set_register_array(struct imx290 *imx290,
 
 	for (i = 0; i < num_settings; ++i, ++settings) {
 		ret = imx290_write_reg(imx290, settings->reg, settings->val);
-		if (ret < 0)
+		if (ret < 0) {
 			return ret;
+		}
 	}
 
 	return 0;
@@ -284,11 +282,9 @@ static int imx290_set_ctrl(struct v4l2_ctrl *ctrl)
 		imx290->enWDRMode = ctrl->val;
 		break;
 	case V4L2_CID_AML_ORIG_FPS:
-		ret = imx290_set_fps(imx290, ctrl->val);
-		if (ctrl->val == 60) {
-			imx290->flag_60hz = 1;
-		} else {
-			imx290->flag_60hz = 0;
+		imx290->fps = ctrl->val;
+		if (imx290->fps != 60) {
+			ret = imx290_set_fps(imx290, imx290->fps);
 		}
 		break;
 	default:
@@ -415,7 +411,7 @@ static int imx290_set_fmt(struct v4l2_subdev *sd,
 	unsigned int i, ret;
 
 	mutex_lock(&imx290->lock);
-	if (imx290->flag_60hz == 1) {
+	if (imx290->fps == 60) {
 		mode = &imx290_modes_4lanes[2];
 	} else {
 		mode = v4l2_find_nearest_size(imx290_modes_ptr(imx290),
@@ -479,7 +475,7 @@ static int imx290_set_fmt(struct v4l2_subdev *sd,
 			dev_err(imx290->dev, "imx290 wdr mode init...\n");
 	} else {
 		/* Set init register settings */
-		if (imx290->flag_60hz) {
+		if (imx290->fps == 60) {
 			ret = imx290_set_register_array(imx290, imx290_global_init_settings_60hz,
 											ARRAY_SIZE(imx290_global_init_settings_60hz));
 		} else {
@@ -632,8 +628,8 @@ int imx290_power_suspend(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct imx290 *imx290 = to_imx290(sd);
-
-	gpiod_set_value_cansleep(imx290->gpio->rst_gpio, 0);
+	dev_err(dev, "%s\n", __func__);
+	imx290_power_off(dev, imx290->gpio);
 
 	return 0;
 }
@@ -643,8 +639,9 @@ int imx290_power_resume(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct imx290 *imx290 = to_imx290(sd);
+	dev_err(dev, "%s\n", __func__);
 
-	gpiod_set_value_cansleep(imx290->gpio->rst_gpio, 1);
+	imx290_power_on(imx290->dev, imx290->gpio);
 
 	return 0;
 }
@@ -834,6 +831,7 @@ int imx290_init(struct i2c_client *client, void *sdrv)
 	imx290->client = client;
 	imx290->client->addr = IMX290_SLAVE_ID;
 	imx290->gpio = &sensor->gpio;
+	imx290->fps = 30;
 
 	imx290->regmap = devm_regmap_init_i2c(client, &imx290_regmap_config);
 	if (IS_ERR(imx290->regmap)) {

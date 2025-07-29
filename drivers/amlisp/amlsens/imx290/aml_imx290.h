@@ -79,7 +79,7 @@ struct imx290 {
 	int status;
 	struct mutex lock;
 
-	int flag_60hz;
+	int fps;
 };
 
 struct imx290_pixfmt {

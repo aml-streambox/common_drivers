@@ -16,7 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  */
-
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt) "aml-csiphy:%s:%d: " fmt, __func__, __LINE__
 
 #include <linux/io.h>
@@ -127,7 +129,6 @@ static int dphy_cfg(void *c_dev, int idx, int lanes, u32 bps)
 
 	settle = (85 + 145 + (16 * ui_val)) / 2;
 	settle = settle / 5;
-
 	// mipi_reg_write(c_dev, module, MIPI_PHY_CTRL, 0x80000000);//soft reset bit
 	// mipi_reg_write(c_dev, module, MIPI_PHY_CTRL, 0);//release soft reset bit
 	if (csiphy_dev->clock_mode) {
@@ -218,7 +219,7 @@ static int csiphy_hw_start(void *c_dev, int idx, int lanes, s64 link_freq)
 	aphy_cfg(c_dev, idx, lanes, bps);
 	dphy_cfg(c_dev, idx, lanes, bps);
 	host_cfg(c_dev, idx, lanes - 1);
-	pr_info("CSIPHY%u: hw start\n", csiphy_dev->index);
+	pr_info("CSIPHY%u: hw start. bps %d Mbps lanes %d \n", csiphy_dev->index, bps, lanes);
 
 	return 0;
 }

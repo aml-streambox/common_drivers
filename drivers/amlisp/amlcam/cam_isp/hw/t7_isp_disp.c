@@ -1380,6 +1380,7 @@ void isp_disp_init(struct isp_dev_t *isp_dev)
 	u32 i = 0;
 #ifdef T7C_CHIP
 	isp_reg_update_bits(isp_dev, ISP_TOP_PATH_EN, 0x7, 4, 4);
+	isp_reg_update_bits(isp_dev, ISP_TOP_PATH_EN, 0x0, 0, 4);
 #endif
 	for (i = 0; i < 3; i++) {
 		isp_reg_update_bits(isp_dev, DISP0_TOP_TOP_CTRL + ((i * DISP_INTER) << 2), 0, 0, 7);

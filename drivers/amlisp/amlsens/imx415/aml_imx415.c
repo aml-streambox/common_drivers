@@ -49,8 +49,24 @@ static const struct imx415_mode imx415_modes_4lanes[] = {
 		.height = 2160,
 		.hmax = 0x0898,
 		.link_freq_index = FREQ_INDEX_1080P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
 		.data = linear_4k_30fps_1440Mbps_4lane_10bits,
 		.data_size = ARRAY_SIZE(linear_4k_30fps_1440Mbps_4lane_10bits),
+	},
+	{
+		.width = 3840,
+		.height = 2160,
+		.hmax = 0x0898,
+		.link_freq_index = FREQ_INDEX_1080P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 600000,
+		},
+		.data = linear_4k_60fps_1440Mbps_4lane_10bits,
+		.data_size = ARRAY_SIZE(linear_4k_60fps_1440Mbps_4lane_10bits),
 	},
 };
 
@@ -164,6 +180,33 @@ static int imx415_set_exposure(struct imx415 *imx415, u32 value)
 	return ret;
 }
 
+static int imx415_set_vts(struct imx415 *imx415, u32 value)
+{
+	u32 vts = 0;
+	u8 vts_h, vts_l;
+	int ret = 0;
+
+	//dev_err(imx415->dev, "get vts 0x%x, dec: %d\n", value, value);
+	vts = value;
+	vts_h = (vts >> 8) & 0xff;
+	vts_l = vts & 0xff;
+
+	ret = imx415_write_reg(imx415, 0x3025, vts_h);
+	if (ret) {
+		dev_err(imx415->dev, "Error setting vts register, line %d\n", __LINE__);
+		goto ERR;
+	}
+
+	ret = imx415_write_reg(imx415, 0x3024, vts_l);
+	if (ret) {
+		dev_err(imx415->dev, "Error setting vts register, line %d\n", __LINE__);
+		goto ERR;
+	}
+
+ERR:
+	return ret;
+}
+
 static int imx415_set_fps(struct imx415 *imx415, u32 value)
 {
 	u32 vts = 0;
@@ -213,7 +256,13 @@ static int imx415_set_ctrl(struct v4l2_ctrl *ctrl)
 		imx415->enWDRMode = ctrl->val;
 		break;
 	case V4L2_CID_AML_ORIG_FPS:
-		ret = imx415_set_fps(imx415, ctrl->val);
+		imx415->fps = ctrl->val;
+		if (imx415->fps != 60) {
+			ret = imx415_set_fps(imx415, imx415->fps);
+		}
+		break;
+	case V4L2_CID_AML_VTS:
+		ret = imx415_set_vts(imx415, ctrl->val);
 		break;
 	default:
 		dev_err(imx415->dev, "Error ctrl->id %u, flag 0x%lx\n",
@@ -257,16 +306,41 @@ static int imx415_enum_frame_size(struct v4l2_subdev *sd,
 			       struct v4l2_subdev_frame_size_enum *fse)
 #endif
 {
-	if (fse->index >= ARRAY_SIZE(imx415_formats))
+	int cfg_num = 1; //report one max size
+	if (fse->index >= cfg_num)
 		return -EINVAL;
 
-	fse->min_width = imx415_formats[fse->index].min_width;
-	fse->min_height = imx415_formats[fse->index].min_height;;
-	fse->max_width = imx415_formats[fse->index].max_width;
-	fse->max_height = imx415_formats[fse->index].max_height;
+	fse->min_width = imx415_formats[0].max_width;
+	fse->min_height = imx415_formats[0].max_height;;
+	fse->max_width = imx415_formats[0].max_width;
+	fse->max_height = imx415_formats[0].max_height;
 
 	return 0;
 }
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+static int imx415_enum_frame_interval(struct v4l2_subdev *sd,
+				struct v4l2_subdev_state *sd_state,
+				struct v4l2_subdev_frame_interval_enum *fie)
+#else
+static int imx415_enum_frame_interval(struct v4l2_subdev *sd,
+				struct v4l2_subdev_pad_config *cfg,
+				struct v4l2_subdev_frame_interval_enum *fie)
+#endif
+{
+	struct imx415 *imx415 = to_imx415(sd);
+	int cfg_num = imx415_modes_num(imx415);
+	const struct imx415_mode* supported_modes = imx415_modes_ptr(imx415);
+	if (fie->index >= cfg_num)
+		return -EINVAL;
+
+	fie->code = imx415_formats[0].code;
+	fie->width = imx415_formats[0].max_width;
+	fie->height = imx415_formats[0].max_height;
+	fie->interval = supported_modes[fie->index].max_fps;
+	return 0;
+}
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 static int imx415_get_fmt(struct v4l2_subdev *sd,
 			  struct v4l2_subdev_state *cfg,
@@ -336,12 +410,14 @@ static int imx415_set_fmt(struct v4l2_subdev *sd,
 	unsigned int i,ret;
 
 	mutex_lock(&imx415->lock);
-
-	mode = v4l2_find_nearest_size(imx415_modes_ptr(imx415),
-				 imx415_modes_num(imx415),
-				width, height,
-				fmt->format.width, fmt->format.height);
-
+	if (imx415->fps == 60) {
+		mode = &imx415_modes_4lanes[1];
+	} else {
+		mode = v4l2_find_nearest_size(imx415_modes_ptr(imx415),
+					 imx415_modes_num(imx415),
+					width, height,
+					fmt->format.width, fmt->format.height);
+	}
 	fmt->format.width = mode->width;
 	fmt->format.height = mode->height;
 
@@ -398,8 +474,13 @@ static int imx415_set_fmt(struct v4l2_subdev *sd,
 			dev_err(imx415->dev, "imx415 wdr mode init...\n");
 	} else {
 		/* Set init register settings */
-		ret = imx415_set_register_array(imx415, linear_4k_30fps_1440Mbps_4lane_10bits,
-			ARRAY_SIZE(linear_4k_30fps_1440Mbps_4lane_10bits));
+		if (imx415->fps == 60) {
+			ret = imx415_set_register_array(imx415, linear_4k_60fps_1440Mbps_4lane_10bits,
+				ARRAY_SIZE(linear_4k_60fps_1440Mbps_4lane_10bits));
+		} else {
+			ret = imx415_set_register_array(imx415, linear_4k_30fps_1440Mbps_4lane_10bits,
+				ARRAY_SIZE(linear_4k_30fps_1440Mbps_4lane_10bits));
+		}
 		if (ret < 0) {
 			dev_err(imx415->dev, "Could not set init registers\n");
 			return ret;
@@ -508,18 +589,12 @@ int imx415_power_on(struct device *dev, struct sensor_gpio *gpio)
 	int ret;
 
 	gpiod_set_value_cansleep(gpio->rst_gpio, 1);
-	usleep_range(30000, 31000);
-
-	gpiod_set_value_cansleep(gpio->rst_gpio, 0);
-	usleep_range(100000, 110000);
-
-	gpiod_set_value_cansleep(gpio->rst_gpio, 1);
-	usleep_range(30000, 31000);
-
+	if (!IS_ERR_OR_NULL(gpio->pwdn_gpio)) {
+		gpiod_set_value_cansleep(gpio->pwdn_gpio, 1);
+	}
 	ret = mclk_enable(dev,24000000);
 	if (ret < 0 )
 		dev_err(dev, "set mclk fail\n");
-	udelay(30);
 
 	// 30ms
 	usleep_range(30000, 31000);
@@ -544,7 +619,8 @@ int imx415_power_suspend(struct device *dev)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct imx415 *imx415 = to_imx415(sd);
 
-	gpiod_set_value_cansleep(imx415->gpio->rst_gpio, 0);
+	dev_err(dev, "%s\n", __func__);
+	imx415_power_off(imx415->dev, imx415->gpio);
 
 	return 0;
 }
@@ -555,7 +631,8 @@ int imx415_power_resume(struct device *dev)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct imx415 *imx415 = to_imx415(sd);
 
-	gpiod_set_value_cansleep(imx415->gpio->rst_gpio, 1);
+	dev_err(dev, "%s\n", __func__);
+	imx415_power_on(imx415->dev, imx415->gpio);
 
 	return 0;
 }
@@ -602,6 +679,7 @@ static const struct v4l2_subdev_pad_ops imx415_pad_ops = {
 	.init_cfg = imx415_entity_init_cfg,
 	.enum_mbus_code = imx415_enum_mbus_code,
 	.enum_frame_size = imx415_enum_frame_size,
+	.enum_frame_interval = imx415_enum_frame_interval,
 	.get_selection = imx415_get_selection,
 	.get_fmt = imx415_get_fmt,
 	.set_fmt = imx415_set_fmt,
@@ -641,7 +719,7 @@ static struct v4l2_ctrl_config fps_cfg = {
 	.type = V4L2_CTRL_TYPE_INTEGER,
 	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE,
 	.min = 1,
-	.max = 30,
+	.max = 60,
 	.step = 1,
 	.def = 30,
 };
@@ -658,11 +736,23 @@ static struct v4l2_ctrl_config nlane_cfg = {
 	.def = 4,
 };
 
+static struct v4l2_ctrl_config vts_cfg = {
+	.ops = &imx415_ctrl_ops,
+	.id = V4L2_CID_AML_VTS,
+	.name = "sensor vts",
+	.type = V4L2_CTRL_TYPE_INTEGER,
+	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE,
+	.min = 1,
+	.max = 0xffff,
+	.step = 1,
+	.def = 2256, //sensor vmax register[0x3025-0x3024]
+};
+
 static int imx415_ctrls_init(struct imx415 *imx415)
 {
 	int rtn = 0;
 
-	v4l2_ctrl_handler_init(&imx415->ctrls, 7);
+	v4l2_ctrl_handler_init(&imx415->ctrls, 8);
 
 	v4l2_ctrl_new_std(&imx415->ctrls, &imx415_ctrl_ops,
 				V4L2_CID_GAIN, 0, 0xF0, 1, 0);
@@ -692,6 +782,7 @@ static int imx415_ctrls_init(struct imx415 *imx415)
 	imx415->wdr = v4l2_ctrl_new_custom(&imx415->ctrls, &wdr_cfg, NULL);
 
 	v4l2_ctrl_new_custom(&imx415->ctrls, &fps_cfg, NULL);
+	v4l2_ctrl_new_custom(&imx415->ctrls, &vts_cfg, NULL);
 
 	imx415->sd.ctrl_handler = &imx415->ctrls;
 
@@ -749,6 +840,7 @@ int imx415_init(struct i2c_client *client, void *sdrv)
 	imx415->client = client;
 	imx415->client->addr = IMX415_SLAVE_ID;
 	imx415->gpio = &sensor->gpio;
+	imx415->fps = 30;
 
 	imx415->regmap = devm_regmap_init_i2c(client, &imx415_regmap_config);
 	if (IS_ERR(imx415->regmap)) {
@@ -831,10 +923,10 @@ int imx415_sensor_id(struct i2c_client *client)
 	id |= val;
 
 	if (id != IMX415_ID) {
-		dev_err(&client->dev, "Failed to get imx415 id: 0x%x\n", id);
+		dev_info(&client->dev, "Failed to get imx415 id: 0x%x\n", id);
 		return rtn;
 	} else {
-		dev_info(&client->dev, "success get imx415 id 0x%x", id);
+		dev_err(&client->dev, "success get imx415 id 0x%x", id);
 	}
 
 	return 0;

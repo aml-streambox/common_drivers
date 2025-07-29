@@ -20,6 +20,9 @@
 #ifndef __AML_ISP_HW_H__
 #define __AML_ISP_HW_H__
 
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt)  "isp_hw:%s:%d: " fmt, __func__, __LINE__
 
 #include <linux/io.h>

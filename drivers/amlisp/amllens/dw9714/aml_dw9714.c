@@ -120,7 +120,7 @@ static int dw9714_set_dac(struct i2c_client *client, u16 position)
 
 	uint8_t data[DW9714_PACKET_BYTES];
 	uint16_t pos = position;
-	pr_err("dw9714_set_dac new position=%d, pos= %d",position, pos);
+//	pr_err("dw9714_set_dac new position=%d, pos= %d",position, pos);
 	if (0 != dw9714_read_reg(client, data, DW9714_PACKET_BYTES))
 	{
 		pr_err("Fail to read dw9714_dev");
@@ -144,7 +144,7 @@ static int dw9714_get_moving_status (struct i2c_client *client, int *status)
 	uint8_t ret = 0;
 	if (0 == dw9714_read_reg(client, data, DW9714_PACKET_BYTES)) {
 		ret = (data[0] >> 6 ) & 0x01; // FLAG bit
-		pr_err("moing is %d", ret);
+//		pr_err("moing is %d", ret);
 		*status = ret;
 		return 0;
 	}
@@ -156,7 +156,7 @@ static int dw9714_get_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct i2c_client *client = NULL;
 	struct dw9714_device *dev_vcm = NULL;
-	pr_err("dw9714_get_ctrl");
+	//pr_err("dw9714_get_ctrl");
 	dev_vcm = container_of(ctrl->handler, struct dw9714_device, ctrls_vcm);
 	if (ctrl->id == V4L2_CID_AML_LENS_MOVING) {
 		client = v4l2_get_subdevdata(&dev_vcm->sd);

@@ -16,7 +16,9 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 *
 */
-
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt)  "aml-csiphy:%s:%d: " fmt, __func__, __LINE__
 #include <linux/version.h>
 #include <linux/io.h>
@@ -81,23 +83,6 @@ static int csiphy_of_parse_endpoint_node(struct device_node *node,
 	c_asd->data_lanes = vep.bus.mipi_csi2.num_data_lanes;
 
 	return 0;
-}
-
-static void csiphy_of_parse_ports_clock_mod(struct csiphy_dev_t *csiphy_dev) {
-	struct device_node *node = NULL;
-	u32 clock_mode = 0;
-	struct v4l2_async_notifier *notifier = csiphy_dev->notifier;
-	struct device *dev = csiphy_dev->dev;
-	v4l2_async_notifier_init(notifier);
-	for_each_endpoint_of_node(dev->of_node, node) {
-		if (!of_device_is_available(node))
-			continue;
-		if (!of_property_read_u32(node, "clock-continue", &clock_mode)) {
-			pr_info("clock-continue = %u \n", clock_mode);
-		}
-		of_node_put(node);
-	}
-	csiphy_dev->clock_mode = clock_mode;
 }
 
 static int csiphy_of_parse_ports(struct csiphy_dev_t *csiphy_dev)
@@ -254,6 +239,40 @@ static int csiphy_of_parse_version(struct csiphy_dev_t *csiphy_dev)
 	return rtn;
 }
 
+static int csiphy_get_clks(struct csiphy_dev_t *csiphy_dev)
+{
+	if (csiphy_dev->csiphy_clk == NULL) {
+		csiphy_dev->csiphy_clk = devm_clk_get(csiphy_dev->dev, "mipi_phy_clk");
+		if (IS_ERR_OR_NULL(csiphy_dev->csiphy_clk)) {
+			dev_err(csiphy_dev->dev, "Error to get csiphy_clk\n");
+			return PTR_ERR(csiphy_dev->csiphy_clk);
+		}
+	}
+
+	if (csiphy_dev->csiphy_clk1 == NULL) {
+		csiphy_dev->csiphy_clk1 = devm_clk_get(csiphy_dev->dev, "mipi_phy_clk1");
+		if (IS_ERR_OR_NULL(csiphy_dev->csiphy_clk1)) {
+			dev_err(csiphy_dev->dev, "Error to get csiphy_clk1\n");
+			return PTR_ERR(csiphy_dev->csiphy_clk1);
+		}
+	}
+	return 0;
+}
+
+static int csiphy_put_clks(struct csiphy_dev_t *csiphy_dev)
+{
+	if (!IS_ERR_OR_NULL(csiphy_dev->csiphy_clk)) {
+		devm_clk_put(csiphy_dev->dev, csiphy_dev->csiphy_clk);
+		csiphy_dev->csiphy_clk = NULL;
+	}
+	if (!IS_ERR_OR_NULL(csiphy_dev->csiphy_clk1)) {
+		devm_clk_put(csiphy_dev->dev, csiphy_dev->csiphy_clk1);
+		csiphy_dev->csiphy_clk1 = NULL;
+	}
+
+	return 0;
+}
+
 static int csiphy_of_parse_dev(struct csiphy_dev_t *csiphy_dev)
 {
 	int rtn = -1;
@@ -268,19 +287,6 @@ static int csiphy_of_parse_dev(struct csiphy_dev_t *csiphy_dev)
 	if (!csiphy_dev->csi_aphy) {
 		rtn = -EINVAL;
 		goto error_rtn;
-	}
-
-	//csiphy_dev->csiphy_clk = devm_clk_get(csiphy_dev->dev, "cts_mipi_csi_phy_clk");
-	csiphy_dev->csiphy_clk = devm_clk_get(csiphy_dev->dev, "mipi_phy_clk");
-	if (IS_ERR(csiphy_dev->csiphy_clk)) {
-		dev_err(csiphy_dev->dev, "Error to get csiphy_clk\n");
-		return PTR_ERR(csiphy_dev->csiphy_clk);
-	}
-
-	csiphy_dev->csiphy_clk1 = devm_clk_get(csiphy_dev->dev, "mipi_phy_clk1");
-	if (IS_ERR(csiphy_dev->csiphy_clk1)) {
-		dev_err(csiphy_dev->dev, "Error to get csiphy_clk1\n");
-		return PTR_ERR(csiphy_dev->csiphy_clk1);
 	}
 
 	rtn = 0;
@@ -385,6 +391,32 @@ static int csiphy_subdev_get_link_freq(struct media_entity *entity, s64 *link_fr
 	return 0;
 }
 
+static int csiphy_subdev_get_clock_mode(struct media_entity *entity)
+{
+	int clock_mode = 0;
+	struct media_entity *sensor;
+	struct v4l2_subdev *subdev;
+	struct v4l2_ctrl *ctrl;
+
+	sensor = csiphy_subdev_get_sensor_entity(entity);
+	if (!sensor) {
+		pr_err("Failed to get sensor entity\n");
+		return -ENODEV;
+	}
+
+	subdev = media_entity_to_v4l2_subdev(sensor);
+
+	ctrl = v4l2_ctrl_find(subdev->ctrl_handler, V4L2_CID_AML_CLOCK_MODE);
+	if (!ctrl) {
+		pr_err("Failed to get clock mode, using fault value\n");
+	} else {
+		clock_mode = ctrl->val;
+	}
+	pr_debug("clock mode: %d \n", clock_mode);
+	return clock_mode;
+
+}
+
 static int csiphy_subdev_get_lanes(struct media_entity *entity, int *data_lanes)
 {
 	struct media_entity *sensor;
@@ -425,6 +457,7 @@ static int csiphy_subdev_stream_on(void *priv)
 
 	csiphy_dev->lanecnt = nlanes;
 	csiphy_dev->lanebps = link_freq;
+	csiphy_dev->clock_mode = csiphy_subdev_get_clock_mode(&csiphy_dev->sd.entity);
 
 	return csiphy_dev->ops->hw_start(csiphy_dev, csiphy_dev->index, nlanes, link_freq);
 }
@@ -449,12 +482,25 @@ static const struct aml_sub_ops csiphy_subdev_ops = {
 	.log_status = csiphy_subdev_log_status,
 };
 
-static int csiphy_subdev_power_on(struct csiphy_dev_t *csiphy_dev)
+void csiphy_subdev_suspend(struct csiphy_dev_t *csiphy_dev)
+{
+	dev_err(csiphy_dev->dev, "%s in\n", __func__);
+
+	pm_runtime_put_sync(csiphy_dev->dev);
+
+	if (__clk_is_enabled(csiphy_dev->csiphy_clk))
+		clk_disable_unprepare(csiphy_dev->csiphy_clk);
+
+	if (__clk_is_enabled(csiphy_dev->csiphy_clk1))
+		clk_disable_unprepare(csiphy_dev->csiphy_clk1);
+}
+
+int csiphy_subdev_resume(struct csiphy_dev_t *csiphy_dev)
 {
 	int rtn = 0;
 
-	dev_pm_domain_attach(csiphy_dev->dev, true);
-	pm_runtime_enable(csiphy_dev->dev);
+	dev_err(csiphy_dev->dev, "%s in\n", __func__);
+
 	pm_runtime_get_sync(csiphy_dev->dev);
 
 	if (!__clk_is_enabled(csiphy_dev->csiphy_clk)) {
@@ -463,60 +509,56 @@ static int csiphy_subdev_power_on(struct csiphy_dev_t *csiphy_dev)
 		if (rtn)
 			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk\n");
 	}
-
 	if (!__clk_is_enabled(csiphy_dev->csiphy_clk1)) {
-
 		clk_set_rate(csiphy_dev->csiphy_clk1, 200000000);
-		rtn = clk_prepare_enable(csiphy_dev->csiphy_clk1);
-		if (rtn)
-			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk1n");
-	}
-	return rtn;
-}
-
-static void csiphy_subdev_power_off(struct csiphy_dev_t *csiphy_dev)
-{
-	clk_disable_unprepare(csiphy_dev->csiphy_clk);
-	clk_disable_unprepare(csiphy_dev->csiphy_clk1);
-
-	pm_runtime_put_sync(csiphy_dev->dev);
-	pm_runtime_disable(csiphy_dev->dev);
-	dev_pm_domain_detach(csiphy_dev->dev, true);
-}
-
-void csiphy_subdev_suspend(struct csiphy_dev_t *csiphy_dev)
-{
-	if (__clk_is_enabled(csiphy_dev->csiphy_clk))
-		clk_disable_unprepare(csiphy_dev->csiphy_clk);
-
-	if (__clk_is_enabled(csiphy_dev->csiphy_clk1))
-		clk_disable_unprepare(csiphy_dev->csiphy_clk1);
-
-	pm_runtime_put_sync(csiphy_dev->dev);
-	pm_runtime_disable(csiphy_dev->dev);
-	dev_pm_domain_detach(csiphy_dev->dev, true);
-}
-
-int csiphy_subdev_resume(struct csiphy_dev_t *csiphy_dev)
-{
-	int rtn = 0;
-	dev_pm_domain_attach(csiphy_dev->dev, true);
-
-	pm_runtime_enable(csiphy_dev->dev);
-	pm_runtime_get_sync(csiphy_dev->dev);
-
-	if (!__clk_is_enabled(csiphy_dev->csiphy_clk)) {
-		rtn = clk_prepare_enable(csiphy_dev->csiphy_clk);
-		if (rtn)
-			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk\n");
-	}
-	if (!__clk_is_enabled(csiphy_dev->csiphy_clk1)) {
 		rtn = clk_prepare_enable(csiphy_dev->csiphy_clk1);
 		if (rtn)
 			dev_err(csiphy_dev->dev, "Error to enable csiphy_clk1\n");
 	}
 	return rtn;
 }
+
+void csiphy_subdev_power_off(struct csiphy_dev_t *csiphy_dev)
+{
+	dev_err(csiphy_dev->dev, "%s in\n", __func__);
+
+	csiphy_subdev_suspend(csiphy_dev);
+
+	pm_runtime_disable(csiphy_dev->dev);
+
+	csiphy_put_clks(csiphy_dev);
+}
+
+int csiphy_subdev_power_on(struct csiphy_dev_t *csiphy_dev)
+{
+	int rtn = 0;
+
+	dev_err(csiphy_dev->dev, "%s in\n", __func__);
+
+	rtn = csiphy_get_clks(csiphy_dev);
+	if (rtn) {
+		dev_err(csiphy_dev->dev, "get clks from dts fail");
+		return rtn;
+	}
+
+	pm_runtime_enable(csiphy_dev->dev);
+
+	// force resume once on poweron.
+	pm_runtime_get_sync(csiphy_dev->dev);
+
+	clk_set_rate(csiphy_dev->csiphy_clk, 200000000);
+	rtn = clk_prepare_enable(csiphy_dev->csiphy_clk);
+	if (rtn)
+		dev_err(csiphy_dev->dev, "Error to enable csiphy_clk\n");
+
+	clk_set_rate(csiphy_dev->csiphy_clk1, 200000000);
+	rtn = clk_prepare_enable(csiphy_dev->csiphy_clk1);
+	if (rtn)
+		dev_err(csiphy_dev->dev, "Error to enable csiphy_clk1\n");
+
+	return rtn;
+}
+
 
 static int csiphy_proc_show(struct seq_file *proc_entry, void *arg ) {
 
@@ -529,7 +571,7 @@ static int csiphy_proc_show(struct seq_file *proc_entry, void *arg ) {
 
 	seq_printf(proc_entry, " ------- PubAttr Info ------- \n");
 	seq_printf(proc_entry, "LaneCnt" "\t" "LaneBps" "\t" "\n");
-	seq_printf(proc_entry, "%d \t %d \t \n\n",
+	seq_printf(proc_entry, "%d \t %ld \t \n\n",
 					c_dev->lanecnt,
 					c_dev->lanebps );
 
@@ -692,8 +734,6 @@ int aml_csiphy_subdev_init(void *c_dev)
 	csiphy_dev->index = cam_dev->index;
 	platform_set_drvdata(pdev, csiphy_dev);
 
-	csiphy_of_parse_ports_clock_mod(csiphy_dev);
-
 	rtn = csiphy_of_parse_ports(csiphy_dev);
 	if (rtn) {
 		dev_err(csiphy_dev->dev, "Failed to parse port\n");
@@ -711,6 +751,12 @@ int aml_csiphy_subdev_init(void *c_dev)
 		dev_err(csiphy_dev->dev, "Failed to parse dev\n");
 		return rtn;
 	}
+
+	// csiphy0 has PDID_T7_MIPI_ISP
+	// csiphy2 not have any PDID
+	if (of_count_phandle_with_args(csiphy_dev->dev->of_node, "power-domains",
+		"#power-domain-cells") == 1)
+		dev_pm_domain_attach(csiphy_dev->dev, true);
 
 	rtn = csiphy_subdev_power_on(csiphy_dev);
 	if (rtn) {
@@ -735,11 +781,16 @@ void aml_csiphy_subdev_deinit(void *c_dev)
 
 	csiphy_subdev_power_off(csiphy_dev);
 
+	// csiphy0 has PDID_T7_MIPI_ISP
+	// csiphy2 not have any PDID
+	if (of_count_phandle_with_args(csiphy_dev->dev->of_node, "power-domains",
+		"#power-domain-cells") == 1)
+		dev_pm_domain_detach(csiphy_dev->dev, true);
+
 	csiphy_iounmap_resource(csiphy_dev);
 
 	csiphy_notifier_cleanup(csiphy_dev);
 
-	devm_clk_put(csiphy_dev->dev, csiphy_dev->csiphy_clk);
 
 	dev_info(csiphy_dev->dev, "CSIPHY%u: subdev deinit\n", csiphy_dev->index);
 }

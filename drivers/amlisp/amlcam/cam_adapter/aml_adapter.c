@@ -16,8 +16,11 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 *
 */
-
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt)  "aml-adap:%s:%d: " fmt, __func__, __LINE__
+
 #include <linux/version.h>
 #include <linux/clk.h>
 #include <linux/io.h>
@@ -34,6 +37,9 @@
 
 #define AML_ADAPTER_NAME "isp-adapter"
 //#define ADAPTER_WDR_DUMP_LONG_FRAME
+
+volatile uint32_t debug_fe_irq_in_count = 0;
+volatile uint32_t debug_fe_irq_out_count = 0;
 
 static struct adapter_dev_t *g_adap_dev[4];
 
@@ -56,7 +62,88 @@ static const struct aml_format adap_support_formats[] = {
 	{0, 0, 0, 0, MEDIA_BUS_FMT_SRGGB14_1X14, 0, 1, 14},
 	{0, 0, 0, 0, MEDIA_BUS_FMT_YUYV8_2X8, 0, 1, 8},
 	{0, 0, 0, 0, MEDIA_BUS_FMT_YVYU8_2X8, 0, 1, 8},
+	{0, 0, 0, 0, MEDIA_BUS_FMT_VYUY8_2X8, 0, 1, 8},
+	{0, 0, 0, 0, MEDIA_BUS_FMT_UYVY8_2X8, 0, 1, 8}
 };
+
+#if 0
+int write_data_to_buf(char *buf, int size)
+{
+	char path[60] = {'\0'};
+	int fd = -1;
+	int ret = 0;
+	struct file *fp = NULL;
+	mm_segment_t old_fs;
+	loff_t pos = 0;
+	unsigned int r_size = 0;
+	static int num = 0;
+	num ++;
+
+	if (buf == NULL || size == 0) {
+		pr_info("%s:Error input param\n", __func__);
+		return -1;
+	}
+
+	sprintf(path, "/sdcard/DCIM/adapter_long_dump-%d.raw",num);
+
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+	fp = filp_open(path, O_RDWR|O_CREAT, 0);
+	if (IS_ERR(fp)) {
+		pr_info("read error.\n");
+		return -1;
+	}
+
+	r_size = vfs_write(fp, buf, size, &pos);
+
+	vfs_fsync(fp, 0);
+	filp_close(fp, NULL);
+	set_fs(old_fs);
+
+	return ret;
+}
+#endif
+
+static void fe_check_timeout(struct timer_list *t)
+{
+	struct adapter_dev_t *adap_dev_t = container_of(t, struct adapter_dev_t, fe_check_timer);
+	struct cam_device *cam_dev = container_of(adap_dev_t, struct cam_device, adap_dev);
+
+	mod_timer(&cam_dev->isp_dev.isp_check_timer, jiffies + msecs_to_jiffies(1000));
+
+	pr_err("fe irq in %d,  out %d", debug_fe_irq_in_count, debug_fe_irq_out_count);
+
+	// adapter off
+	if (cam_dev->adap_dev.ops->hw_stop) {
+		cam_dev->adap_dev.ops->hw_stop(&(cam_dev->adap_dev));
+		pr_err("adap hw_stop");
+	}
+	if (cam_dev->adap_dev.ops->hw_irq_dis)
+		cam_dev->adap_dev.ops->hw_irq_dis(&(cam_dev->adap_dev));
+
+	// csiphy off
+	cam_dev->csiphy_dev.ops->hw_stop(&(cam_dev->csiphy_dev), cam_dev->csiphy_dev.index );
+
+	// adapter re-init
+	if (cam_dev->adap_dev.ops->hw_reset)
+		cam_dev->adap_dev.ops->hw_reset(&(cam_dev->adap_dev));
+
+	if (cam_dev->adap_dev.ops->hw_init)
+		cam_dev->adap_dev.ops->hw_init(&(cam_dev->adap_dev));
+
+	// adapter on
+	if (cam_dev->adap_dev.ops->hw_start) {
+		cam_dev->adap_dev.ops->hw_start(&(cam_dev->adap_dev));
+		pr_err("adap hw_start");
+	}
+	if (cam_dev->adap_dev.ops->hw_irq_en)
+		cam_dev->adap_dev.ops->hw_irq_en(&(cam_dev->adap_dev));
+	pr_err("adap reset done");
+	// csiphy on
+	cam_dev->csiphy_dev.ops->hw_start(&(cam_dev->csiphy_dev), cam_dev->csiphy_dev.index, cam_dev->csiphy_dev.lanecnt, cam_dev->csiphy_dev.lanebps);
+
+	pr_err("leave");
+}
 
 struct adapter_dev_t *adap_get_dev(int index)
 {
@@ -365,6 +452,45 @@ int adap_fe_done_buf(struct adapter_dev_t *a_dev)
 	return 0;
 }
 
+static int adap_get_clks(struct adapter_dev_t *adap_dev)
+{
+	if (adap_dev->adap_clk == NULL) {
+		adap_dev->adap_clk = devm_clk_get(adap_dev->dev, "mipi_isp_clk");
+		if (IS_ERR_OR_NULL(adap_dev->adap_clk)) {
+			dev_err(adap_dev->dev,"Error to get mipi_isp_clk\n");
+			return PTR_ERR(adap_dev->adap_clk);
+		}
+	}
+
+#ifndef T7C_CHIP
+	if (adap_dev->vapb_clk == NULL) {
+		adap_dev->vapb_clk = devm_clk_get(adap_dev->dev, "vapb_clk");
+		if (IS_ERR_OR_NULL(adap_dev->vapb_clk)) {
+			dev_err(adap_dev->dev,"Error to get vapb_clk\n");
+			return PTR_ERR(adap_dev->vapb_clk);
+		}
+	}
+#endif
+
+	return 0;
+}
+
+static int adap_put_clks(struct adapter_dev_t *adap_dev)
+{
+	if (!IS_ERR_OR_NULL(adap_dev->adap_clk)) {
+		devm_clk_put(adap_dev->dev, adap_dev->adap_clk);
+		adap_dev->adap_clk = NULL;
+	}
+#ifndef T7C_CHIP
+	if (!IS_ERR_OR_NULL(adap_dev->vapb_clk)) {
+		devm_clk_put(adap_dev->dev, adap_dev->vapb_clk);
+		adap_dev->vapb_clk = NULL;
+	}
+#endif
+
+	return 0;
+}
+
 static int adap_of_parse_dev(struct adapter_dev_t *adap_dev)
 {
 	int rtn = 0;
@@ -377,11 +503,6 @@ static int adap_of_parse_dev(struct adapter_dev_t *adap_dev)
 		rtn = -EINVAL;
 		goto error_rtn;
 	}
-
-	adap_dev->adap_clk = devm_clk_get(adap_dev->dev, "mipi_isp_clk");
-#ifndef T7C_CHIP
-	adap_dev->vapb_clk = devm_clk_get(adap_dev->dev, "vapb_clk");
-#endif
 
 error_rtn:
 	return rtn;
@@ -452,6 +573,7 @@ static irqreturn_t adap_irq_handler_offline(int irq, void *dev)
 	unsigned long flags;
 	struct adapter_dev_t *adap_dev = dev;
 
+	debug_fe_irq_in_count++;
 	/**
 	* Execute the hw_interrupt_status function before detecting wstatus
 	* reason: if adap_subdev_stream_off function sets wstatus to STATUS_STOP in advance, \
@@ -459,8 +581,10 @@ static irqreturn_t adap_irq_handler_offline(int irq, void *dev)
 	*/
 	status = adap_dev->ops->hw_interrupt_status(adap_dev);
 
-	if (adap_dev->wstatus != STATUS_START)
+	if (adap_dev->wstatus != STATUS_START) {
+		debug_fe_irq_out_count++;
 		return IRQ_HANDLED;
+	}
 
 	spin_lock_irqsave(&adap_dev->irq_lock, flags);
 
@@ -472,8 +596,11 @@ static irqreturn_t adap_irq_handler_offline(int irq, void *dev)
 		tasklet_schedule(&adap_dev->irq_tasklet);
 #endif
 	}
+	debug_fe_irq_out_count++;
 
 	spin_unlock_irqrestore(&adap_dev->irq_lock, flags);
+
+	mod_timer(&adap_dev->fe_check_timer, jiffies + msecs_to_jiffies(1000));
 
 	return IRQ_HANDLED;
 }
@@ -517,10 +644,16 @@ static int adap_request_irq_offline(struct adapter_dev_t *adap_dev)
 static int adap_subdev_stream_on(void *priv)
 {
 	struct adapter_dev_t *adap_dev = priv;
+	int rtn = 0;
 
 	adap_dev->wstatus = STATUS_START;
 
-	adap_alloc_raw_buffs(adap_dev);
+	rtn = adap_alloc_raw_buffs(adap_dev);
+	if (rtn < 0)
+	{
+		pr_err("Failed to alloc raw buff stream on fail");
+		return rtn;
+	}
 
 	adap_wdr_cfg_buf(adap_dev);
 
@@ -533,6 +666,8 @@ static int adap_subdev_stream_on(void *priv)
 
 	if (adap_dev->ops->hw_irq_en)
 		adap_dev->ops->hw_irq_en(adap_dev);
+
+	mod_timer(&adap_dev->fe_check_timer, jiffies + msecs_to_jiffies(1000));
 
 	return 0;
 }
@@ -553,6 +688,10 @@ static void adap_subdev_stream_off(void *priv)
 		adap_dev->ops->hw_irq_dis(adap_dev);
 
 	adap_free_raw_buffs(adap_dev);
+
+	del_timer(&adap_dev->fe_check_timer);
+
+	debug_fe_irq_in_count = debug_fe_irq_out_count = 0;
 }
 
 static int adap_subdev_convert_fmt(struct adapter_dev_t *adap_dev,
@@ -590,7 +729,8 @@ static int adap_subdev_convert_fmt(struct adapter_dev_t *adap_dev,
 	break;
 	}
 
-	if ((format->code == MEDIA_BUS_FMT_YVYU8_2X8) || (format->code == MEDIA_BUS_FMT_YUYV8_2X8))
+	if ((format->code == MEDIA_BUS_FMT_YVYU8_2X8) || (format->code == MEDIA_BUS_FMT_YUYV8_2X8) ||
+		(format->code == MEDIA_BUS_FMT_UYVY8_2X8) || (format->code == MEDIA_BUS_FMT_VYUY8_2X8))
 		fmt = ADAP_YUV422_8BIT;
 
 	return fmt;
@@ -645,9 +785,6 @@ static int adap_subdev_hw_init(struct adapter_dev_t *adap_dev,
 
 	aml_adap_global_devno(adap_dev->index);
 
-	if (adap_dev->ops->hw_reset)
-		adap_dev->ops->hw_reset(adap_dev);
-
 	if (adap_dev->ops->hw_init)
 		adap_dev->ops->hw_init(adap_dev);
 
@@ -661,9 +798,68 @@ static int adap_subdev_set_format(void *priv, void *s_fmt, void *m_fmt)
 	struct v4l2_subdev_format *fmt = s_fmt;
 	struct v4l2_mbus_framefmt *format = m_fmt;
 
+	pr_info("set fmt pad =  0x%x\n", fmt->pad);
+
 	if (fmt->pad == AML_ADAP_PAD_SINK)
 		rtn = adap_subdev_hw_init(adap_dev, format);
 
+	if (fmt->pad == AML_ADAP_PAD_SRC) {
+
+		if (adap_dev->pfmt[AML_ADAP_PAD_SINK].width == 0 || adap_dev->pfmt[AML_ADAP_PAD_SINK].height == 0) {
+			dev_err(adap_dev->dev, "must set adap sink pad [0] first.\n");
+			return -1;
+		}
+
+		if (adap_dev->pfmt[AML_ADAP_PAD_SINK].code == MEDIA_BUS_FMT_YUYV8_2X8 ||
+			adap_dev->pfmt[AML_ADAP_PAD_SINK].code == MEDIA_BUS_FMT_YVYU8_2X8 ||
+			adap_dev->pfmt[AML_ADAP_PAD_SINK].code == MEDIA_BUS_FMT_UYVY8_2X8 ||
+			adap_dev->pfmt[AML_ADAP_PAD_SINK].code == MEDIA_BUS_FMT_VYUY8_2X8 )
+		{
+			// adapter input is yuv422.
+			// adapter output must be YUYV;
+			// convert all yuv422 to YUYV fmt via fe gen_ctrl1;
+
+			// example-1: sensor output Y1U Y2V. Y1 is reveiced firstly.
+			// 7  6 5 4    3 2  1 0-->  remap[7:0]    --> 7  6 5  4   3  2 1  0
+			// V Y2 U Y1   V Y2 U Y1 -> 00 11 10 01     -> Y1 V Y2 U   Y1 V Y2 U
+			// [7:6] din_byte3_sel 00 use received byte 0 as receiver's buf byte 3; Y1
+			// [5:4] din_byte2_sel 11 use received byte 3 as receiver's buf byte 2; Y1 V
+			// [3:2] din_byte1_sel 10 use received byte 2 as receiver's buf byte 1; Y1 V Y2
+			// [1:0] din_byte0_sel 11 use received byte 3 as receiver's buf byte 0; Y1 V Y2 U
+
+			// example-2 sensor output UY1 VY2. U is received firstly.
+			// Y2 V Y1 U   Y2 V Y1 U ->  01 10 11 00 --> Y1 V Y2 U  Y1 V Y2 U
+
+			// [ 3  2  1 0]
+			// [ Y1 V Y2 U]
+
+
+			// example-3 sensor output VY1 UY2. V is received firstly.
+			// Y2 U Y1 V   Y2 U Y1 V -> 11 10 01 00  --> Y2 U Y1 V    Y2 U Y1 V
+
+			// example-4 sensor output Y1V Y2U. Y1 is received firstly.
+			// U Y2 V Y1    U Y2 V Y1 -> 10 11 00 01 -->  Y2 U Y1 V   Y2 U Y1 V
+
+			// [ 3  2  1 0]
+			// [ Y2 U Y1 V ]
+			u32 byte_order = 0b11100100;
+			switch (adap_dev->pfmt[AML_ADAP_PAD_SINK].code)
+			{
+				case MEDIA_BUS_FMT_YUYV8_2X8: byte_order = 0b00111001; break;
+				case MEDIA_BUS_FMT_UYVY8_2X8: byte_order = 0b01101100; break;
+
+				case MEDIA_BUS_FMT_YVYU8_2X8: byte_order = 0b10110001; break;
+				case MEDIA_BUS_FMT_VYUY8_2X8: byte_order = 0b11100100; break;
+			}
+
+			dev_info(adap_dev->dev, "set byte order 0x%x\n", byte_order);
+
+			if (adap_dev->ops->hw_fe_set_byte_order)
+				adap_dev->ops->hw_fe_set_byte_order(adap_dev, byte_order);
+
+			format->code = MEDIA_BUS_FMT_YUYV8_2X8;
+		}
+	}
 	return rtn;
 }
 
@@ -749,35 +945,9 @@ static int adap_subdev_ctrls_init(struct adapter_dev_t *adap_dev)
 	return rtn;
 }
 
-static int adap_subdev_power_on(struct adapter_dev_t *adap_dev)
-{
-	int rtn = 0;
-
-#ifndef T7C_CHIP
-	rtn = clk_prepare_enable(adap_dev->vapb_clk);
-	if (rtn)
-		pr_err("Error to enable vapb clk\n");
-#endif
-	if (!__clk_is_enabled(adap_dev->adap_clk)) {
-
-		clk_set_rate(adap_dev->adap_clk, 666666666);
-		rtn = clk_prepare_enable(adap_dev->adap_clk);
-		if (rtn)
-			dev_err(adap_dev->dev, "Error to enable adap_clk(isp) clk\n");
-
-	}
-	return rtn;
-}
-
-static void adap_subdev_power_off(struct adapter_dev_t *adap_dev)
-{
-	if (adap_dev->index == AML_CAM_4) {
-		clk_disable_unprepare(adap_dev->wrmif_clk);
-	}
-}
-
 void adap_subdev_suspend(struct adapter_dev_t *adap_dev)
 {
+	dev_info(adap_dev->dev, "%s in\n", __func__);
 	if (__clk_is_enabled(adap_dev->adap_clk))
 		clk_disable_unprepare(adap_dev->adap_clk);
 	dev_info(adap_dev->dev, "%s out \n", __func__);
@@ -788,10 +958,39 @@ int adap_subdev_resume(struct adapter_dev_t *adap_dev)
 	int rtn = 0;
 
 	if (!__clk_is_enabled(adap_dev->adap_clk)) {
+		clk_set_rate(adap_dev->adap_clk, 666666666);
 		rtn = clk_prepare_enable(adap_dev->adap_clk);
 		if (rtn)
 			dev_err(adap_dev->dev, "Error to enable adap_clk(isp) clk\n");
 	}
+	return rtn;
+}
+
+void adap_subdev_power_off(struct adapter_dev_t *adap_dev)
+{
+	dev_err(adap_dev->dev, "%s in\n", __func__);
+
+	adap_subdev_suspend(adap_dev);
+	adap_put_clks(adap_dev);
+}
+
+int adap_subdev_power_on(struct adapter_dev_t *adap_dev)
+{
+	int rtn = 0;
+	dev_err(adap_dev->dev, "%s in\n", __func__);
+
+	rtn = adap_get_clks(adap_dev);
+	if (rtn) {
+		dev_err(adap_dev->dev, "get clks from dts fail");
+		return rtn;
+	}
+
+	// force resume once on poweron.
+	clk_set_rate(adap_dev->adap_clk, 666666666);
+	rtn = clk_prepare_enable(adap_dev->adap_clk);
+	if (rtn)
+		dev_err(adap_dev->dev, "Error to enable adap_clk(isp) clk\n");
+
 	return rtn;
 }
 
@@ -917,6 +1116,9 @@ int aml_adap_subdev_register(struct adapter_dev_t *adap_dev)
 	if (rtn)
 		goto error_rtn;
 
+	if (adap_dev->ops->hw_reset)
+		adap_dev->ops->hw_reset(adap_dev);
+
 	dev_info(adap_dev->dev, "ADAP%u: register subdev\n", adap_dev->index);
 
 error_rtn:
@@ -987,9 +1189,15 @@ int aml_adap_subdev_init(void *c_dev)
 
 	aml_adap_global_init();
 
+	if (adap_dev && adap_dev->ops && adap_dev->ops->hw_clear_irq) {
+		dev_err(adap_dev->dev, "clear irq\n");
+		adap_dev->ops->hw_clear_irq(adap_dev);
+	}
 	rtn = adap_request_irq_offline(adap_dev);
 	if (rtn)
 		adap_iounmap_resource(adap_dev);
+
+	timer_setup(&(adap_dev->fe_check_timer ), fe_check_timeout, 0);
 
 	dev_info(adap_dev->dev, "ADAP%u: subdev init\n", adap_dev->index);
 
@@ -1012,9 +1220,6 @@ void aml_adap_subdev_deinit(void *c_dev)
 
 	tasklet_kill(&adap_dev->irq_tasklet);
 	devm_free_irq(adap_dev->dev, adap_dev->irq, adap_dev);
-
-	if (adap_dev->index == AML_CAM_4)
-		devm_clk_put(adap_dev->dev, adap_dev->wrmif_clk);
 
 	dev_info(adap_dev->dev, "ADAP%u: subdev deinit\n", adap_dev->index);
 }

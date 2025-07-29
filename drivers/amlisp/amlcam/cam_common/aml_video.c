@@ -16,6 +16,9 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 *
 */
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt)  "[ispvideo]:%s:%d: " fmt, __func__, __LINE__
 
 #include <linux/version.h>
@@ -29,7 +32,18 @@
 #include "aml_common.h"
 #include "aml_misc.h"
 #include "aml_isp.h"
+#include "aml_cam.h"
 #include <linux/delay.h>
+
+static  DEFINE_MUTEX(one_entry_lock);
+
+static struct cam_device * aml_video_to_cam_device(struct aml_video *video)
+{
+	struct v4l2_device *p_v4l2_dev = video->v4l2_dev;
+	struct cam_device * cam_dev = NULL;
+	cam_dev = container_of(p_v4l2_dev, struct cam_device, v4l2_dev);
+	return cam_dev;
+}
 
 static int video_verify_fmt(struct aml_video *video, struct v4l2_format *fmt)
 {
@@ -152,7 +166,20 @@ static int video_enum_fmt(struct file *file, void *fh, struct v4l2_fmtdesc *fmt)
 	if (fmt->type != video->type || fmt->index >= video->fmt_cnt)
 		return -EINVAL;
 
+	if (AML_ISP_STREAM_PARAM == video->id) {
+		const unsigned sz = sizeof(fmt->description);
+		strscpy(fmt->description, "AML 3A PARAM", sz);
+		return -EINVAL;
+	}
+	if (AML_ISP_STREAM_STATS == video->id)  {
+		const unsigned sz = sizeof(fmt->description);
+		strscpy(fmt->description, "AML 3A STAT", sz);
+		return -EINVAL;
+	}
+
 	fmt->pixelformat = video->format[fmt->index].fourcc;
+
+	//dev_info(video->dev, "video id %d enum fmt index %d, out fmt 0x%x\n", video->id, fmt->index, fmt->pixelformat);
 
 	return 0;
 }
@@ -275,11 +302,21 @@ static int video_ioctl_dqbuf(struct file *file, void *priv, struct v4l2_buffer *
 	int rtn = 0;
 	struct vb2_buffer *vb;
 	struct video_device *vdev;
+	struct aml_video *aml_video = video_drvdata(file);
+
+	if (0 == aml_video->first_frame_logged) {
+		pr_info("video %d beg dq first 1 frame\n", aml_video->id);
+	}
 
 	rtn = vb2_ioctl_dqbuf(file, priv, p);
 	if (rtn) {
 		pr_err("Failed to dqubuf: %d\n", rtn);
 		return rtn;
+	}
+
+	if (0 == aml_video->first_frame_logged) {
+		pr_info("video %d end dq first 1 frame\n", aml_video->id);
+		aml_video->first_frame_logged = 1;
 	}
 
 	vdev = video_devdata(file);
@@ -437,12 +474,19 @@ static int video_start_streaming(struct vb2_queue *queue, unsigned int count)
 	int rtn = 0;
 	struct media_pad *pad = NULL;
 	struct v4l2_subdev *subdev = NULL;
+	struct v4l2_subdev *sensor_subdev = NULL;
 	struct aml_video *video = vb2_get_drv_priv(queue);
 	struct media_entity *entity = &video->vdev.entity;
+	struct cam_device * cam_dev;
+	cam_dev = aml_video_to_cam_device(video);
+
+	mutex_lock(&one_entry_lock);
 
 	if (strstr(entity->name, "isp-stats") || strstr(entity->name, "isp-param")) {
 		if (video->ops->cap_stream_on)
 			video->ops->cap_stream_on(video);
+
+		mutex_unlock(&one_entry_lock);
 		return 0;
 	}
 
@@ -451,6 +495,34 @@ static int video_start_streaming(struct vb2_queue *queue, unsigned int count)
 		dev_err(video->dev, "Failed to start pipeline: %d\n", rtn);
 		goto error_return;
 	}
+
+	// ===== begin stream on sensor first ==================
+	while (1) {
+		pad = &entity->pads[0];
+		pad = media_entity_remote_pad(pad);
+		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
+			break;
+
+		if (pad->flags & MEDIA_PAD_FL_SINK)
+			break;
+
+		entity = pad->entity;
+		sensor_subdev = media_entity_to_v4l2_subdev(entity);
+	}
+
+	if (sensor_subdev) {
+		if (entity->stream_count == 1) {
+			v4l2_subdev_call(sensor_subdev, video, s_stream, 1);
+			msleep(100);
+		} else if (entity->stream_count > 1) {
+			// for existed stream; sleep 1 vsync;
+			// let settings take effect; then stream on isp;
+			pr_info("sleep 100 for existed stream;");
+			msleep(100);
+		}
+	}
+	// ===== end stream on sensor ===========================
+	entity = &video->vdev.entity;
 
 	if (video->ops->cap_stream_on)
 		video->ops->cap_stream_on(video);
@@ -473,15 +545,30 @@ static int video_start_streaming(struct vb2_queue *queue, unsigned int count)
 
 		subdev = media_entity_to_v4l2_subdev(entity);
 
-		rtn = v4l2_subdev_call(subdev, video, s_stream, 1);
+		if (subdev != sensor_subdev)
+			rtn = v4l2_subdev_call(subdev, video, s_stream, 1);
+
 		if (rtn < 0 && rtn != -ENOIOCTLCMD) {
 			entity = &video->vdev.entity;
 			media_pipeline_stop(entity);
+			pr_err("subdev stream on fail, ret %d", rtn);
 			goto error_return;
 		}
 	}
 
+	video->first_frame_logged = 0;
+
+	pr_info("stream on vid %d, pipeline streaming_count %d ", video->id, video->pipe->streaming_count);
+
+	if (video->pipe->streaming_count == 1) {
+		pr_info("start dq check timer on vid %d", video->id);
+		mod_timer(&cam_dev->isp_dev.isp_check_timer, jiffies + msecs_to_jiffies(1000));
+		video->dq_check_timer_working = 1;
+	}
+
 error_return:
+
+	mutex_unlock(&one_entry_lock);
 	return rtn;
 }
 
@@ -489,19 +576,27 @@ static void video_stop_streaming(struct vb2_queue *queue)
 {
 	struct media_pad *pad = NULL;
 	struct v4l2_subdev *subdev = NULL;
+	struct v4l2_subdev *sensor_subdev = NULL;
 	struct aml_video *video = vb2_get_drv_priv(queue);
 	struct media_entity *entity = &video->vdev.entity;
+	struct cam_device * cam_dev;
+	cam_dev = aml_video_to_cam_device(video);
+
+	mutex_lock(&one_entry_lock);
 
 	if (strstr(entity->name, "isp-stats") || strstr(entity->name, "isp-param")) {
 		if (video->ops->cap_stream_off)
 			video->ops->cap_stream_off(video);
 		if (video->ops->cap_flush_buffer)
 			video->ops->cap_flush_buffer(video);
+
+		mutex_unlock(&one_entry_lock);
 		return;
 	}
 
 	media_pipeline_stop(entity);
 
+	// ===== begin stream off sensor first ==================
 	while (1) {
 		pad = &entity->pads[0];
 		pad = media_entity_remote_pad(pad);
@@ -512,16 +607,17 @@ static void video_stop_streaming(struct vb2_queue *queue)
 			break;
 
 		entity = pad->entity;
-		if (entity->stream_count)
-			continue;
-
-		subdev = media_entity_to_v4l2_subdev(entity);
+		sensor_subdev = media_entity_to_v4l2_subdev(entity);
 	}
 
-	if (subdev && video)
-		v4l2_subdev_call(subdev, video, s_stream, 0);
+	if (sensor_subdev) {
+		if (entity->stream_count == 0) {
+			v4l2_subdev_call(sensor_subdev, video, s_stream, 0);
+			msleep(100);
+		}
+	}
+	// ===== end stream off sensor ===========================
 
-	msleep(100);
 	entity = &video->vdev.entity;
 	while (1) {
 		pad = &entity->pads[0];
@@ -537,7 +633,9 @@ static void video_stop_streaming(struct vb2_queue *queue)
 			continue;
 
 		subdev = media_entity_to_v4l2_subdev(entity);
-		v4l2_subdev_call(subdev, video, s_stream, 0);
+
+		if (subdev != sensor_subdev)
+			v4l2_subdev_call(subdev, video, s_stream, 0);
 	}
 
 	video->actrl.fps_sensor = 0;
@@ -548,6 +646,15 @@ static void video_stop_streaming(struct vb2_queue *queue)
 
 	if (video->ops->cap_flush_buffer)
 		video->ops->cap_flush_buffer(video);
+
+	if (video->dq_check_timer_working == 1) {
+		pr_info("del timer on vid %d", video->id);
+		del_timer(&cam_dev->isp_dev.isp_check_timer);
+		video->dq_check_timer_working = 0;
+	}
+
+	mutex_unlock(&one_entry_lock);
+
 }
 
 static struct vb2_ops aml_vb2_ops = {

@@ -16,8 +16,11 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 *
 */
-
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt)  "aml-adap:%s:%d: " fmt, __func__, __LINE__
+
 #include <linux/version.h>
 #include <linux/clk.h>
 #include <linux/io.h>

@@ -82,6 +82,9 @@ struct csiphy_dev_t {
 void csiphy_subdev_suspend(struct csiphy_dev_t *csiphy_dev);
 int csiphy_subdev_resume(struct csiphy_dev_t *csiphy_dev);
 
+void csiphy_subdev_power_off(struct csiphy_dev_t *csiphy_dev);
+int csiphy_subdev_power_on(struct csiphy_dev_t *csiphy_dev);
+
 int aml_csiphy_subdev_init(void *c_dev);
 void aml_csiphy_subdev_deinit(void *c_dev);
 int aml_csiphy_subdev_register(struct csiphy_dev_t *csiphy_dev);

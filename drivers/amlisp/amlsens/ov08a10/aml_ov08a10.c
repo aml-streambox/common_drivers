@@ -62,19 +62,25 @@ static const struct ov08a10_mode ov08a10_modes_2lanes[] = {
 		.width = 1920,
 		.height = 1080,
 		.hmax  = 0x1130,
+		.link_freq_index = FREQ_INDEX_1080P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
 		.data = ov08a10_1080p_settings,
 		.data_size = ARRAY_SIZE(ov08a10_1080p_settings),
-
-		.link_freq_index = FREQ_INDEX_1080P,
 	},
 	{
 		.width = 1280,
 		.height = 720,
 		.hmax = 0x19c8,
+		.link_freq_index = FREQ_INDEX_720P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
 		.data = ov08a10_720p_settings,
 		.data_size = ARRAY_SIZE(ov08a10_720p_settings),
-
-		.link_freq_index = FREQ_INDEX_720P,
 	},
 };
 
@@ -84,6 +90,10 @@ static const struct ov08a10_mode ov08a10_modes_4lanes[] = {
 		.height = 2160,
 		.hmax = 0x0898,
 		.link_freq_index = FREQ_INDEX_1080P,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
 		.data = ov08a10_1080p_settings,
 		.data_size = ARRAY_SIZE(ov08a10_1080p_settings),
 	},
@@ -92,8 +102,12 @@ static const struct ov08a10_mode ov08a10_modes_4lanes[] = {
 		.height = 2160,
 		.hmax = 0x0ce4,
 		.link_freq_index = FREQ_INDEX_720P,
-		.data = ov08a10_720p_settings,
-		.data_size = ARRAY_SIZE(ov08a10_720p_settings),
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 600000,
+		},
+		.data = setting_3840_2160_4lane_1440m_60fps,
+		.data_size = ARRAY_SIZE(setting_3840_2160_4lane_1440m_60fps),
 	},
 };
 
@@ -176,12 +190,13 @@ static int ov08a10_set_gain(struct ov08a10 *ov08a10, u32 value)
 	int ret;
 	ret = ov08a10_write_reg(ov08a10, OV08A10_GAIN, (value >> 8) & 0xFF);
 	//dev_err(ov08a10->dev, "OV08A10_GAIN = %d\n",value);
-	
+
 	if (ret)
 		dev_err(ov08a10->dev, "Unable to write gain_H\n");
 	ret = ov08a10_write_reg(ov08a10, OV08A10_GAIN_L, value & 0xFF);
 	if (ret)
 		dev_err(ov08a10->dev, "Unable to write gain_L\n");
+
 	return ret;
 }
 
@@ -195,6 +210,23 @@ static int ov08a10_set_exposure(struct ov08a10 *ov08a10, u32 value)
 	if (ret)
 		dev_err(ov08a10->dev, "Unable to write gain_L\n");
 	return ret;
+}
+
+static int ov08a10_set_fps(struct ov08a10 *ov08a10, u32 value)
+{
+	u32 vts = 0;
+	u8 vts_h, vts_l;
+
+	dev_info(ov08a10->dev, "ov08a10_set_fps = %d \n", value);
+
+	vts = 30 * 2314 / value;
+	vts_h = (vts >> 8) & 0x7f;
+	vts_l = vts & 0xff;
+
+	ov08a10_write_reg(ov08a10, 0x380e, vts_h);
+	ov08a10_write_reg(ov08a10, 0x380f, vts_l);
+
+	return 0;
 }
 
 static int ov08a10_set_vts(struct ov08a10 *ov08a10, u32 value)
@@ -257,6 +289,10 @@ static int ov08a10_set_ctrl(struct v4l2_ctrl *ctrl)
 		ov08a10->enWDRMode = ctrl->val;
 		break;
 	case V4L2_CID_AML_ORIG_FPS:
+		ov08a10->fps = ctrl->val;
+		if (ov08a10->fps != 60) {
+			ret = ov08a10_set_fps(ov08a10, ov08a10->fps);
+		}
 		//ret = ov08a10_set_fps(ov08a10, ctrl->val);
 		break;
 	case V4L2_CID_AML_VTS:
@@ -304,16 +340,41 @@ static int ov08a10_enum_frame_size(struct v4l2_subdev *sd,
 			       struct v4l2_subdev_frame_size_enum *fse)
 #endif
 {
-	if (fse->index >= ARRAY_SIZE(ov08a10_formats))
+	int cfg_num = 1; //report one max size
+	if (fse->index >= cfg_num)
 		return -EINVAL;
 
-	fse->min_width = ov08a10_formats[fse->index].min_width;
-	fse->min_height = ov08a10_formats[fse->index].min_height;;
-	fse->max_width = ov08a10_formats[fse->index].max_width;
-	fse->max_height = ov08a10_formats[fse->index].max_height;
+	fse->min_width = ov08a10_formats[0].max_width;
+	fse->min_height = ov08a10_formats[0].max_height;;
+	fse->max_width = ov08a10_formats[0].max_width;
+	fse->max_height = ov08a10_formats[0].max_height;
 
 	return 0;
 }
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+static int ov08a10_enum_frame_interval(struct v4l2_subdev *sd,
+				struct v4l2_subdev_state *sd_state,
+				struct v4l2_subdev_frame_interval_enum *fie)
+#else
+static int ov08a10_enum_frame_interval(struct v4l2_subdev *sd,
+				struct v4l2_subdev_pad_config *cfg,
+				struct v4l2_subdev_frame_interval_enum *fie)
+#endif
+{
+	struct ov08a10 *ov08a10 = to_ov08a10(sd);
+	int cfg_num = ov08a10_modes_num(ov08a10);
+	const struct ov08a10_mode* supported_modes = ov08a10_modes_ptr(ov08a10);
+	if (fie->index >= cfg_num)
+		return -EINVAL;
+
+	fie->code = ov08a10_formats[0].code;
+	fie->width = ov08a10_formats[0].max_width;
+	fie->height = ov08a10_formats[0].max_height;
+	fie->interval = supported_modes[fie->index].max_fps;
+	return 0;
+}
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 static int ov08a10_get_fmt(struct v4l2_subdev *sd,
 			  struct v4l2_subdev_state *cfg,
@@ -383,11 +444,14 @@ static int ov08a10_set_fmt(struct v4l2_subdev *sd,
 	unsigned int i,ret;
 
 	mutex_lock(&ov08a10->lock);
-
-	mode = v4l2_find_nearest_size(ov08a10_modes_ptr(ov08a10),
-				 ov08a10_modes_num(ov08a10),
-				width, height,
-				fmt->format.width, fmt->format.height);
+	if (ov08a10->fps == 60) {
+		mode = &ov08a10_modes_4lanes[1];
+	} else {
+		mode = v4l2_find_nearest_size(ov08a10_modes_ptr(ov08a10),
+					 ov08a10_modes_num(ov08a10),
+					width, height,
+					fmt->format.width, fmt->format.height);
+	}
 
 	fmt->format.width = mode->width;
 	fmt->format.height = mode->height;
@@ -451,14 +515,13 @@ static int ov08a10_set_fmt(struct v4l2_subdev *sd,
 	} else {
 		/* Set init register settings */
 
-		#ifdef OV08A10_SDR_60FPS_1440M
-		ret = ov08a10_set_register_array(ov08a10, setting_3840_2160_4lane_1440m_60fps,
-			ARRAY_SIZE(setting_3840_2160_4lane_1440m_60fps));
-		#else
-		ret = ov08a10_set_register_array(ov08a10, setting_3840_2160_4lane_800m_30fps,
-			ARRAY_SIZE(setting_3840_2160_4lane_800m_30fps));
-		#endif
-
+		if (ov08a10->fps == 60) {
+			ret = ov08a10_set_register_array(ov08a10, setting_3840_2160_4lane_1440m_60fps,
+				ARRAY_SIZE(setting_3840_2160_4lane_1440m_60fps));
+		} else {
+			ret = ov08a10_set_register_array(ov08a10, setting_3840_2160_4lane_800m_30fps,
+				ARRAY_SIZE(setting_3840_2160_4lane_800m_30fps));
+		}
 		if (ret < 0) {
 			dev_err(ov08a10->dev, "Could not set init registers\n");
 			return ret;
@@ -565,23 +628,23 @@ int ov08a10_power_on(struct device *dev, struct sensor_gpio *gpio)
 {
 	int ret;
 
-	gpiod_set_value_cansleep(gpio->rst_gpio, 1);
-	usleep_range(30000, 31000);
+	 gpiod_set_value_cansleep(gpio->rst_gpio, 1);
+	 usleep_range(30000, 31000);
 
-	gpiod_set_value_cansleep(gpio->rst_gpio, 0);
-	usleep_range(100000, 110000);
+	 gpiod_set_value_cansleep(gpio->rst_gpio, 0);
+	 usleep_range(100000, 110000);
 
-	gpiod_set_value_cansleep(gpio->rst_gpio, 1);
-	usleep_range(30000, 31000);
+	 gpiod_set_value_cansleep(gpio->rst_gpio, 1);
+	 usleep_range(30000, 31000);
 
-	ret = mclk_enable(dev,24000000);
-	if (ret < 0 )
-		dev_err(dev, "set mclk fail\n");
+	 ret = mclk_enable(dev,24000000);
+	 if (ret < 0 )
+	 dev_err(dev, "set mclk fail\n");
 
-	udelay(30);
+	 udelay(30);
 
-	// 30ms
-	usleep_range(30000, 31000);
+	 // 30ms
+	 usleep_range(30000, 31000);
 
 	return 0;
 }
@@ -603,7 +666,8 @@ int ov08a10_power_suspend(struct device *dev)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct ov08a10 *ov08a10 = to_ov08a10(sd);
 
-	gpiod_set_value_cansleep(ov08a10->gpio->rst_gpio, 0);
+	dev_err(dev, "%s\n", __func__);
+	ov08a10_power_off(ov08a10->dev, ov08a10->gpio);
 
 	return 0;
 }
@@ -614,7 +678,8 @@ int ov08a10_power_resume(struct device *dev)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct ov08a10 *ov08a10 = to_ov08a10(sd);
 
-	gpiod_set_value_cansleep(ov08a10->gpio->rst_gpio, 1);
+	dev_err(dev, "%s\n", __func__);
+	ov08a10_power_on(ov08a10->dev, ov08a10->gpio);
 
 	return 0;
 }
@@ -658,6 +723,7 @@ static const struct v4l2_subdev_pad_ops ov08a10_pad_ops = {
 	.init_cfg = ov08a10_entity_init_cfg,
 	.enum_mbus_code = ov08a10_enum_mbus_code,
 	.enum_frame_size = ov08a10_enum_frame_size,
+	.enum_frame_interval = ov08a10_enum_frame_interval,
 	.get_selection = ov08a10_get_selection,
 	.get_fmt = ov08a10_get_fmt,
 	.set_fmt = ov08a10_set_fmt,
@@ -695,7 +761,7 @@ static struct v4l2_ctrl_config fps_cfg = {
 	.type = V4L2_CTRL_TYPE_INTEGER,
 	.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_EXECUTE_ON_WRITE,
 	.min = 1,
-	.max = 30,
+	.max = 60,
 	.step = 1,
 	.def = 30,
 };
@@ -816,6 +882,8 @@ int ov08a10_init(struct i2c_client *client, void *sdrv)
 	ov08a10->client = client;
 	ov08a10->client->addr = OV08A10_SLAVE_ID;
 	ov08a10->gpio = &sensor->gpio;
+	ov08a10->fps = 30;
+	ov08a10->nlanes = 4;
 
 	ov08a10->regmap = devm_regmap_init_i2c(client, &ov08a10_regmap_config);
 	if (IS_ERR(ov08a10->regmap)) {
@@ -899,7 +967,7 @@ int ov08a10_sensor_id(struct i2c_client *client)
 	id |= val;
 
 	if (id != OV08A10_ID) {
-		dev_info(&client->dev, "Failed to get ov08a10 id: 0x%x\n", id);
+		dev_err(&client->dev, "Failed to get ov08a10 id: 0x%x\n", id);
 		return rtn;
 	} else {
 		dev_err(&client->dev, "success get ov08a10 id 0x%x", id);

@@ -17,7 +17,11 @@
 *
 */
 
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt)  "aml-subdev:%s:%d: " fmt, __func__, __LINE__
+
 #include <linux/version.h>
 #include <linux/io.h>
 #include <media/v4l2-common.h>
@@ -136,8 +140,11 @@ static int subdev_set_format(struct v4l2_subdev *sd,
 	*format = fmt->format;
 	format->field = V4L2_FIELD_NONE;
 
-	if (subdev->ops->set_format)
+	if (subdev->ops->set_format) {
 		subdev->ops->set_format(subdev->priv, fmt, format);
+		// update code change to userspace.
+		fmt->format.code = format->code;
+	}
 
 	return 0;
 }
@@ -161,6 +168,19 @@ static int subdev_get_format(struct v4l2_subdev *sd,
 	fmt->format = *format;
 
 	return 0;
+}
+
+static int subdev_pad_link_validate(struct v4l2_subdev *sd,
+			     struct media_link *link,
+			     struct v4l2_subdev_format *source_fmt,
+			     struct v4l2_subdev_format *sink_fmt)
+{
+	struct aml_subdev *subdev = v4l2_get_subdevdata(sd);
+
+	if (subdev->ops->pad_link_validate)
+		return subdev->ops->pad_link_validate(subdev->priv, link, source_fmt, sink_fmt);
+	else
+		return -ENOIOCTLCMD;
 }
 
 static int subdev_log_status(struct v4l2_subdev *sd)
@@ -198,6 +218,7 @@ static const struct v4l2_subdev_pad_ops subdev_pad_ops = {
 	.set_selection = subdev_set_selection,
 	.get_fmt = subdev_get_format,
 	.set_fmt = subdev_set_format,
+	.link_validate = subdev_pad_link_validate,
 };
 
 static const struct v4l2_subdev_ops subdev_v4l2_ops = {

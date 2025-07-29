@@ -32,6 +32,8 @@
 #include "ov13b10/aml_ov13b10.h"
 #include "imx577/aml_imx577.h"
 #include "ov16a1q/aml_ov16a1q.h"
+#include "imx678/aml_imx678.h"
+#include "imx585/aml_imx585.h"
 
 struct sensor_subdev sd_imx290 = {
 	.sensor_init = imx290_init,
@@ -143,6 +145,26 @@ struct sensor_subdev sd_ov16a1q = {
 	.sensor_power_resume = ov16a1q_power_resume,
 };
 
+struct sensor_subdev sd_imx678 = {
+	.sensor_init = imx678_init,
+	.sensor_deinit = imx678_deinit,
+	.sensor_get_id = imx678_sensor_id,
+	.sensor_power_on = imx678_power_on,
+	.sensor_power_off = imx678_power_off,
+	.sensor_power_suspend = imx678_power_suspend,
+	.sensor_power_resume = imx678_power_resume,
+};
+
+struct sensor_subdev sd_imx585 = {
+	.sensor_init = imx585_init,
+	.sensor_deinit = imx585_deinit,
+	.sensor_get_id = imx585_sensor_id,
+	.sensor_power_on = imx585_power_on,
+	.sensor_power_off = imx585_power_off,
+	.sensor_power_suspend = imx585_power_suspend,
+	.sensor_power_resume = imx585_power_resume,
+};
+
 struct sensor_subdev *aml_sensors[] = {
 	&sd_imx290,
 	&sd_imx415,
@@ -155,6 +177,8 @@ struct sensor_subdev *aml_sensors[] = {
 	&sd_lt6911c,
 	&sd_ov16a1q,
 	&sd_imx335,
+	&sd_imx678,
+	&sd_imx585,
 };
 
 

@@ -129,19 +129,7 @@ void isp_nr_cac_cfg_size(struct isp_dev_t *isp_dev, struct aml_format *fmt)
 	val = (1 << 24) / (ysize /(CAC_TABLE_YSIZE - 1) + 1);
 	isp_reg_update_bits(isp_dev, ISP_CAC_CNTL1, val, 0, 23);
 
-	val = ((1 << 24) / (xsize >> 1)) >> 4;
-	isp_reg_update_bits(isp_dev, ISP_CUBIC_RAD_SCL0, val, 16, 16);
-
-	val = ((1 << 24) / (ysize >> 1)) >> 4;
-	isp_reg_update_bits(isp_dev, ISP_CUBIC_RAD_SCL0, val, 0, 16);
-
 	isp_reg_update_bits(isp_dev, ISP_CUBIC_RAD_SCL1, 181, 0, 8);
-
-	val = (xsize >> 1);
-	isp_reg_update_bits(isp_dev, ISP_CUBIC_RAD_CENTER, val, 16, 16);
-
-	val = (ysize >> 1);
-	isp_reg_update_bits(isp_dev, ISP_CUBIC_RAD_CENTER, val, 0, 16);
 }
 
 void isp_nr_cac_cfg_param(struct isp_dev_t *isp_dev, struct aml_buffer *buff)

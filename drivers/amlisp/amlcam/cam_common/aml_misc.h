@@ -21,7 +21,13 @@
 #define __AML_P1_MISC_H__
 
 #ifdef ANDROID_OS
+
+#if IS_ENABLED(CONFIG_AMLOGIC_FREERTOS)
+#define VIDEO_NODE    62
+#else
 #define VIDEO_NODE    60
+#endif
+
 #else
 #define VIDEO_NODE    -1
 #endif

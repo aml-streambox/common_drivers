@@ -16,7 +16,9 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 *
 */
-
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt)  "aml-adap:%s:%d: " fmt, __func__, __LINE__
 
 #include <linux/io.h>
@@ -1151,12 +1153,13 @@ static void adap_module_reset(void *a_dev)
 	}
 
 	module_reg_write(a_dev, module, CSI2_GEN_CTRL0, 0x00000000);
+	module_update_bits(a_dev, READER_MD, MIPI_ADAPT_TOP_CNTL0, 1, adap_dev->index, 1);
+	udelay(1000);
+	module_update_bits(a_dev, READER_MD, MIPI_ADAPT_TOP_CNTL0, 0, adap_dev->index, 1);
 
 	if (g_info->user)
 		return;
-
 	module_update_bits(a_dev, READER_MD, MIPI_ADAPT_DDR_RD0_CNTL0, 0, 0, 1);
-
 	udelay(1000);
 #ifdef T7C_CHIP
 	module_update_bits(a_dev, PROC_MD, MIPI_TOP_CSI2_CTRL0, 1, 6, 1);
@@ -1165,6 +1168,7 @@ static void adap_module_reset(void *a_dev)
 	module_update_bits(a_dev, PROC_MD, MIPI_PROC_TOP_CTRL0, 1, 2, 1);
 	module_update_bits(a_dev, PROC_MD, MIPI_PROC_TOP_CTRL0, 0, 2, 1);
 #endif
+
 }
 
 static int adap_hw_init(void *a_dev)
@@ -1457,6 +1461,32 @@ static void adap_fe_disable(struct aml_video *video)
 	adap_frontend_stop(video->priv);
 }
 
+static void adap_fe_set_byte_order(void *a_dev, u32 byte_order)
+{
+	struct adapter_dev_t *adap_dev = a_dev;
+	int module = FRONTEND_MD;
+
+	switch (adap_dev->index) {
+	case 0:
+		module = FRONTEND_MD;
+		break;
+	case 1:
+		module = FRONTEND1_MD;
+		break;
+	case 2:
+		module = FRONTEND2_MD;
+		break;
+	case 3:
+		module = FRONTEND3_MD;
+		break;
+	default:
+		break;
+	}
+
+	module_reg_write(a_dev, module, CSI2_GEN_CTRL1, byte_order);
+
+}
+
 static void adap_rd_enable(struct aml_video *video)
 {
 	adap_align_start(video->priv);
@@ -1524,6 +1554,13 @@ static void adap_hw_irq_enable(void *a_dev)
 	module_update_bits(a_dev, adap_dev->index, CSI2_INTERRUPT_CTRL_STAT, 1, 2, 1); //fe wr done
 
 	//module_update_bits(a_dev, ISP_TOP_OFFSET, MIPI_TOP_ISP_PENDING_MASK0, 1, ALIGN_FRAME_END, 1); //align done
+}
+
+static void adap_hw_clear_irq(void *a_dev)
+{
+	struct adapter_dev_t *adap_dev = a_dev;
+	module_update_bits(a_dev, adap_dev->index, CSI2_INTERRUPT_CTRL_STAT, 0, 0, 6);
+	module_update_bits(a_dev, adap_dev->index, CSI2_INTERRUPT_CTRL_STAT, 0, 16, 6);
 }
 
 static void adap_hw_reset(void *a_dev)
@@ -1627,6 +1664,8 @@ const struct adapter_dev_ops adap_dev_hw_ops = {
 	.hw_wdr_cfg_buf = adap_wdr_cfg_buf,
 	.hw_irq_en = adap_hw_irq_enable,
 	.hw_irq_dis = adap_hw_irq_disable,
+	.hw_clear_irq = adap_hw_clear_irq,
 	.hw_offline_mode = adap_hw_offline,
 	.hw_fe_status = adap_fe_status,
+	.hw_fe_set_byte_order = adap_fe_set_byte_order,
 };

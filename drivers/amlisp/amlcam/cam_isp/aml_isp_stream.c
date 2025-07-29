@@ -16,6 +16,7 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 *
 */
+#include "aml_cam.h"
 #include "aml_isp_ctrls.h"
 #include "aml_isp.h"
 
@@ -23,6 +24,10 @@
 
 #define V4L2_META_AML_ISP_CONFIG     v4l2_fourcc('A', 'C', 'F', 'G') /* Aml isp config */
 #define V4L2_META_AML_ISP_STATS	     v4l2_fourcc('A', 'S', 'T', 'S') /* Aml isp statistics */
+
+static int drop_frame_count = 0;
+module_param(drop_frame_count, int, 0644);
+MODULE_PARM_DESC(drop_frame_count, "Set video drop frame number");
 
 static char *stream_name[] = {
 	"isp-ddr-input",
@@ -66,19 +71,27 @@ static const struct aml_format data_support_format[] = {
 };
 
 static const struct aml_format raw_support_format[] = {
-	{0, 0, 0, 0, V4L2_PIX_FMT_SBGGR8, 0, 1, 8},
-	{0, 0, 0, 0, V4L2_PIX_FMT_SBGGR10, 0, 1, 16},
-	{0, 0, 0, 0, V4L2_PIX_FMT_SBGGR12, 0, 1, 16},
-	{0, 0, 0, 0, V4L2_PIX_FMT_SGBRG8, 0, 1, 8},
-	{0, 0, 0, 0, V4L2_PIX_FMT_SGBRG10, 0, 1, 16},
-	{0, 0, 0, 0, V4L2_PIX_FMT_SGBRG12, 0, 1, 16},
-	{0, 0, 0, 0, V4L2_PIX_FMT_SRGGB8, 0, 1, 8},
-	{0, 0, 0, 0, V4L2_PIX_FMT_SRGGB10, 0, 1, 16},
-	{0, 0, 0, 0, V4L2_PIX_FMT_SRGGB12, 0, 1, 16},
-	{0, 0, 0, 0, V4L2_PIX_FMT_SGRBG8, 0, 1, 8},
-	{0, 0, 0, 0, V4L2_PIX_FMT_SGRBG10, 0, 1, 16},
-	{0, 0, 0, 0, V4L2_PIX_FMT_SGRBG12, 0, 1, 16},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SBGGR8, 1, 8},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SBGGR10, 1, 16},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SBGGR12, 1, 16},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SGBRG8, 1, 8},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SGBRG10, 1, 16},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SGBRG12, 1, 16},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SRGGB8, 1, 8},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SRGGB10, 1, 16},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SRGGB12, 1, 16},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SGRBG8, 1, 8},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SGRBG10, 1, 16},
+	{0, 0, 0, 0, 0, V4L2_PIX_FMT_SGRBG12, 1, 16},
 };
+
+static struct cam_device * aml_video_to_cam_device(struct aml_video *video)
+{
+	struct v4l2_device *p_v4l2_dev = video->v4l2_dev;
+	struct cam_device * cam_dev = NULL;
+	cam_dev = container_of(p_v4l2_dev, struct cam_device, v4l2_dev);
+	return cam_dev;
+}
 
 static int isp_cap_stream_bilateral_cfg(struct aml_video *vd, struct aml_buffer *buff)
 {
@@ -141,6 +154,9 @@ static int isp_cap_irq_handler(void *video, int status)
 {
 	unsigned long flags;
 	struct aml_video *vd = video;
+	int video_drop_frame_cnt = drop_frame_count;
+	struct cam_device * cam_dev;
+	cam_dev = aml_video_to_cam_device(vd);
 
 	struct aml_buffer *b_current = vd->b_current;
 	struct isp_dev_t *isp_dev = vd->priv;
@@ -153,6 +169,26 @@ static int isp_cap_irq_handler(void *video, int status)
 	if (vd->status != AML_ON) {
 		spin_unlock_irqrestore(&vd->buff_list_lock, flags);
 		return 0;
+	}
+
+	if (1 == vd->dq_check_timer_working) {
+		mod_timer(&cam_dev->isp_dev.isp_check_timer, jiffies + msecs_to_jiffies(1000));
+	}
+
+	// drop frame; multiple videos dq & q; open another video while one video is streaming
+	// the second opened video must drop some frames after streaming on,
+	// otherwise empty frame will be dequeued.
+	if (!(vd->id == AML_ISP_STREAM_PARAM ||
+		vd->id == AML_ISP_STREAM_STATS ||
+		vd->id == AML_ISP_STREAM_DDR ||
+		vd->id == AML_ISP_STREAM_RAW)) {
+		if (vd->frm_cnt < video_drop_frame_cnt) {
+			vd->frm_cnt++;
+			//pr_info("drop frame, vid %d, frm cnt %d", vd->id, vd->frm_cnt);
+			ops->hw_stream_cfg_buf(vd, b_current);
+			spin_unlock_irqrestore(&vd->buff_list_lock, flags);
+			return 0;
+		}
 	}
 
 	if (b_current) {
@@ -170,7 +206,7 @@ static int isp_cap_irq_handler(void *video, int status)
 			spin_unlock_irqrestore(&vd->buff_list_lock, flags);
 			return 0;
 		}
-		b_current->vb.sequence = vd->frm_cnt;
+		b_current->vb.sequence = vd->frm_cnt - video_drop_frame_cnt;
 		b_current->vb.vb2_buf.timestamp = ktime_get_ns();
 		b_current->vb.field = V4L2_FIELD_NONE;
 		if (vd->id == AML_ISP_STREAM_PARAM ||
