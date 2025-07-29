@@ -190,7 +190,6 @@ static const struct dev_pm_ops sensor_pm_ops = {
 static int sensor_parse_power(struct amlsens *sensor)
 {
 	int rtn = 0;
-	 struct gpio_desc *ircut;
 
 	sensor->gpio.rst_gpio = devm_gpiod_get_optional(sensor->dev,
 												"reset",
@@ -202,14 +201,17 @@ static int sensor_parse_power(struct amlsens *sensor)
 		goto err_return;
 	}
 
-	// IRCUT
-	ircut = devm_gpiod_get_optional(sensor->dev, "ircut", GPIOD_OUT_LOW);
-	if (IS_ERR(ircut)) {
-		rtn = PTR_ERR(ircut);
+	// IRCUT - OS08A10 PIN21 - IRCUT
+	//		 - IMX415 PIN21 - RESET
+	//		 - IMX585 PIN21 - NC
+	//		 - IMX678 PIN21 - NC
+	sensor->gpio.ircut_gpio = devm_gpiod_get_optional(sensor->dev, "ircut", GPIOD_OUT_LOW);
+	if (IS_ERR(sensor->gpio.ircut_gpio)) {
+		rtn = PTR_ERR(sensor->gpio.ircut_gpio);
 		dev_err(sensor->dev, "Cannot get ircut gpio: %d\n", rtn);
 		goto err_return;
 	}
-	gpiod_set_value(ircut, 1);
+	gpiod_set_value(sensor->gpio.ircut_gpio, 1);
 	pr_info("ircut init\n");
 
 err_return:

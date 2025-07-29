@@ -588,6 +588,9 @@ int imx415_power_on(struct device *dev, struct sensor_gpio *gpio)
 {
 	int ret;
 
+	// IMX415 PIN21 RESET, defined in dts as 'ircut-gpios'
+	gpio->rst_gpio = gpio->ircut_gpio;
+
 	gpiod_set_value_cansleep(gpio->rst_gpio, 1);
 	if (!IS_ERR_OR_NULL(gpio->pwdn_gpio)) {
 		gpiod_set_value_cansleep(gpio->pwdn_gpio, 1);

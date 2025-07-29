@@ -1482,31 +1482,6 @@
 		reg-addr-type = <2>;
 		reg-data-type = <1>;
 
-		clocks = <&clkc CLKID_MCLK_0>,
-				<&clkc CLKID_MCLK_0_SEL>,
-				<&clkc CLKID_MCLK_0_PRE>,
-				<&clkc CLKID_MCLK_PLL>,
-				<&xtal>;
-		clock-names = "mclk","mclk_sel","mclk_pre","mclk_p","mclk_x";
-		reset-gpios = <&gpio GPIOM_5 GPIO_ACTIVE_HIGH>;
-		ircut-gpios = <&gpio GPIOM_11 GPIO_ACTIVE_HIGH>;
-		port {
-			amlsens_0_ep: endpoint {
-				data-lanes = <0 1 2 3>;
-				link-frequencies = /bits/ 64 <1440000000>;
-				remote-endpoint = <&csiphy0_ep_2>;
-			};
-		};
-	};
-
-	amlsens_1: sensor1@1a {
-		compatible = "amlogic, sensor";
-		status = "disabled";
-		index = <0>;
-		reg = <0x1a>;
-		reg-addr-type = <2>;
-		reg-data-type = <1>;
-
 		lens-focus = <&dw9714>;
 		clocks = <&clkc CLKID_MCLK_0>,
 				<&clkc CLKID_MCLK_0_SEL>,
@@ -1514,14 +1489,21 @@
 				<&clkc CLKID_MCLK_PLL>,
 				<&xtal>;
 		clock-names = "mclk","mclk_sel","mclk_pre","mclk_p","mclk_x";
-		pwdn-gpios = <&gpio GPIOM_5 GPIO_ACTIVE_HIGH>;
-		reset-gpios = <&gpio GPIOM_11 GPIO_ACTIVE_HIGH>;
+
+		// OS08A10/IMX585/IMX678 PIN24 - RESET
+		// IMX415 PIN24 - NC
+		reset-gpios = <&gpio GPIOM_5 GPIO_ACTIVE_HIGH>;
+		// OS08A10 PIN21 - IRCUT
+		// IMX585/IMX678 PIN21 - NC
+		// IMX415 PIN21 - RESET
+		ircut-gpios = <&gpio GPIOM_11 GPIO_ACTIVE_HIGH>;
+
 		port@0 {
-			amlsens_1_ep: endpoint {
+			amlsens_ep: endpoint {
 				reg = <0>;
 				data-lanes = <0 1 2 3>;
 				link-frequencies = /bits/ 64 <1440000000>;
-				remote-endpoint = <&csiphy0_ep_4>;
+				remote-endpoint = <&csiphy0_ep>;
 			};
 		};
 	};
@@ -1715,21 +1697,12 @@
 &csiphy0 {
 	ports {
 		port@0 {
-			csiphy0_ep_2: endpoint {
+			csiphy0_ep: endpoint {
 				reg = <0>;
 				status = "okay";
 				clock-lanes = <4>;
 				data-lanes = <0 1 2 3>;
-				remote-endpoint = <&amlsens_0_ep>;
-			};
-		};
-		port@1 {
-			csiphy0_ep_4: endpoint {
-				reg = <1>;
-				status = "disabled";
-				clock-lanes = <4>;
-				data-lanes = <0 1 2 3>;
-				remote-endpoint = <&amlsens_1_ep>;
+				remote-endpoint = <&amlsens_ep>;
 			};
 		};
 	};

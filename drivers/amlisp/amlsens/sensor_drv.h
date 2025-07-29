@@ -45,6 +45,7 @@ struct sensor_pixfmt {
 
 struct sensor_gpio {
 	struct gpio_desc *rst_gpio;
+	struct gpio_desc *ircut_gpio;
 	struct gpio_desc *pwdn_gpio;
 	struct gpio_desc *power_gpio;
 };
