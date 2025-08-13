@@ -353,6 +353,8 @@ static int amlogic_new_usb2_probe(struct platform_device *pdev)
 	unsigned int clk_regsize = 0;
 	unsigned int	phy_trim_reg;
 	void __iomem	*usb_phy_trim_reg = NULL;
+	const char *gpio_name = NULL;
+	struct gpio_desc *usb_gd = NULL;
 	int portnum = 0;
 	int phy_version = 0;
 	int reset_level = 0x84;
@@ -366,6 +368,15 @@ static int amlogic_new_usb2_probe(struct platform_device *pdev)
 	u32 otg_phy_index = 1;
 	u32 val;
 	u32 usbclk_div = 0;
+
+	gpio_name = of_get_property(dev->of_node, "gpio-vbus-power", NULL);
+	if (gpio_name) {
+		usb_gd = gpiod_get_index(&pdev->dev,
+							NULL, 0, GPIOD_OUT_LOW);
+		if (IS_ERR(usb_gd))
+			return -1;
+		gpiod_direction_output(usb_gd, 1);
+	}
 
 	prop = of_get_property(dev->of_node, "portnum", NULL);
 	if (prop)
