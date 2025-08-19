@@ -257,6 +257,18 @@ ERR:
 	return ret;
 }
 
+static int ov08a10_set_ircut(struct ov08a10 *ov08a10, u32 value)
+{
+	dev_err(ov08a10->dev, "set ircut: %d\n", value);
+
+	if (value)
+		gpiod_set_value_cansleep(ov08a10->gpio->ircut_gpio, 0);
+	else
+		gpiod_set_value_cansleep(ov08a10->gpio->ircut_gpio, 1);
+
+	return 0;
+}
+
 /* Stop streaming */
 static int ov08a10_stop_streaming(struct ov08a10 *ov08a10)
 {
@@ -297,6 +309,9 @@ static int ov08a10_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CID_AML_VTS:
 		ret = ov08a10_set_vts(ov08a10, ctrl->val);
+		break;
+	case V4L2_CID_AML_IRCUT:
+		ret = ov08a10_set_ircut(ov08a10, ctrl->val);
 		break;
 	default:
 		dev_err(ov08a10->dev, "Error ctrl->id %u, flag 0x%lx\n",
@@ -790,11 +805,22 @@ static struct v4l2_ctrl_config vts_cfg = {
 	.def = 2314, //sensor vmax register[0x380e-0x380f]
 };
 
+static const struct v4l2_ctrl_config isp_v4l2_ctrl_sensor_ir_cut = {
+	.ops = &ov08a10_ctrl_ops,
+	.id = V4L2_CID_AML_IRCUT,
+	.name = "sensor ir cut set",
+	.type = V4L2_CTRL_TYPE_INTEGER,
+	.min = 0,
+	.max = 1,
+	.step = 1,
+	.def = 0,
+};
+
 static int ov08a10_ctrls_init(struct ov08a10 *ov08a10)
 {
 	int rtn = 0;
 
-	v4l2_ctrl_handler_init(&ov08a10->ctrls, 8);
+	v4l2_ctrl_handler_init(&ov08a10->ctrls, 9);
 
 	v4l2_ctrl_new_std(&ov08a10->ctrls, &ov08a10_ctrl_ops,
 				V4L2_CID_GAIN, 0, 0xffff, 1, 0);
@@ -825,6 +851,7 @@ static int ov08a10_ctrls_init(struct ov08a10 *ov08a10)
 
 	v4l2_ctrl_new_custom(&ov08a10->ctrls, &fps_cfg, NULL);
 	v4l2_ctrl_new_custom(&ov08a10->ctrls, &vts_cfg, NULL);
+	v4l2_ctrl_new_custom(&ov08a10->ctrls, &isp_v4l2_ctrl_sensor_ir_cut, NULL);
 
 	ov08a10->sd.ctrl_handler = &ov08a10->ctrls;
 
