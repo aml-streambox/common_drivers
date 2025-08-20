@@ -695,7 +695,7 @@
 	status = "okay";
 	pinctrl-names="default";
 	pinctrl-0=<&i2c1_pins2>;
-	clock-frequency = <300000>; /* default 100k */
+	clock-frequency = <100000>; /* default 100k */
 
 	hym8563-rtc@51 {
 		compatible = "haoyu,hym8563";
