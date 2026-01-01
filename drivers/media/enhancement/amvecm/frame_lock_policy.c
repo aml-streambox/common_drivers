@@ -5,6 +5,7 @@
 
 #include <linux/module.h>
 #include <linux/notifier.h>
+#include <linux/of_device.h>
 #include <linux/amlogic/media/vrr/vrr.h>
 #include <linux/amlogic/media/vfm/vframe.h>
 #include <linux/amlogic/media/video_sink/vpp.h>
@@ -95,10 +96,37 @@ void frame_lock_param_config(struct device_node *node)
 {
 	unsigned int val;
 	int ret;
+	struct device_node *vrr_node;
 
 	ret = of_property_read_u32(node, "vrr_priority", &val);
 	if (!ret)
 		vrr_priority = val;
+
+	/* Read line_delay from VRR device tree node */
+	vrr_node = of_find_compatible_node(NULL, NULL, "amlogic, vrr-t7");
+	if (!vrr_node)
+		vrr_node = of_find_compatible_node(NULL, NULL, "amlogic, vrr-t3");
+	if (!vrr_node)
+		vrr_node = of_find_compatible_node(NULL, NULL, "amlogic, vrr-t5w");
+	if (!vrr_node)
+		vrr_node = of_find_compatible_node(NULL, NULL, "amlogic, vrr-t5m");
+	if (!vrr_node)
+		vrr_node = of_find_compatible_node(NULL, NULL, "amlogic, vrr-t3x");
+
+	if (vrr_node) {
+		ret = of_property_read_u32(vrr_node, "line_delay", &val);
+		if (!ret) {
+			vrr_delay_line = val;
+			framelock_pr_info("vrr_delay_line read from DT: %d\n", vrr_delay_line);
+		} else {
+			framelock_pr_info("line_delay not found in VRR DT, using default: %d\n",
+					  vrr_delay_line);
+		}
+		of_node_put(vrr_node);
+	} else {
+		framelock_pr_info("VRR node not found in DT, using default vrr_delay_line: %d\n",
+				  vrr_delay_line);
+	}
 }
 
 unsigned int frame_lock_show_vout_framerate(void)

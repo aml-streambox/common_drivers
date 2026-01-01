@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright (c) 2023 Khadas Technology Co.,Ltd. All rights reserved.
+ * Copyright (c) 2025 retro98boy <retro98boy@qq.com>
+ */
+
+/dts-v1/;
+
+#include "t7-a311d2-tvpro-8g.dts"
+
+/ {
+	amlogic-dt-id = "t7-a311d2-tvpro-4g";
+	compatible = "t7-a311d2-tvpro-4g";
+
+	memory@00000000 {
+		linux,usable-memory = <0x00000000 0x00000000 0x00000000 0xE0000000
+								0x00000001 0x00000000 0x00000000 0x20000000>;
+	};
+};

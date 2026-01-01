@@ -450,6 +450,7 @@ u32 hdmitx_vrr_get_maxlncnt(void);
 int hdmitx_set_fr_hint(int duration, void *data);
 void hdmitx_unregister_vrr(struct hdmitx_dev *hdev);
 void hdmitx_register_vrr(struct hdmitx_dev *hdev);
+void hdmitx_register_vrr_from_common(struct hdmitx_common *tx_comm);
 ssize_t _vrr_cap_show(struct device *dev, struct device_attribute *attr,
 	char *buf);
 int hdmitx_dump_vrr_status(struct seq_file *s, void *p);

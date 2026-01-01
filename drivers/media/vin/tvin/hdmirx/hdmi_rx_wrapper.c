@@ -2770,6 +2770,10 @@ enum tvin_sig_fmt_e hdmirx_hw_get_fmt(u8 port)
 			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_30HZ;
 		else if (get_fps_index(port) == E_50HZ)
 			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_50HZ;
+		else if (get_fps_index(port) == E_100HZ)
+			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_100HZ;
+		else if (get_fps_index(port) == E_120HZ)
+			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_120HZ;
 		else
 			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_60HZ;
 		break;

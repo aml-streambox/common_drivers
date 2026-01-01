@@ -1227,6 +1227,18 @@ void hdmitx_unregister_vrr(struct hdmitx_dev *hdev)
 	HDMITX_INFO("%s ret = %d\n", __func__, ret);
 }
 
+void hdmitx_register_vrr_from_common(struct hdmitx_common *tx_comm)
+{
+	struct hdmitx_dev *hdev;
+
+	if (!tx_comm)
+		return;
+
+	hdev = container_of(tx_comm, struct hdmitx_dev, tx_comm);
+
+	hdmitx_register_vrr(hdev);
+}
+
 static struct vinfo_s *hdmitx_get_curvinfo(void *data)
 {
 	struct hdmitx_dev *hdev = get_hdmitx21_device();
@@ -1246,8 +1258,8 @@ void hdmitx_register_vrr(struct hdmitx_dev *hdev)
 	if (!vinfo || vinfo->mode != VMODE_HDMI)
 		return;
 	vrr->output_src = VRR_OUTPUT_ENCP;
-	vrr->vfreq_max = prxcap->vrr_min;
-	vrr->vfreq_min = prxcap->vrr_max;
+	vrr->vfreq_max = prxcap->vrr_max;
+	vrr->vfreq_min = prxcap->vrr_min;
 	vrr->vline_max =
 		vinfo->vtotal * (prxcap->vrr_max / prxcap->vrr_min);
 	if (prxcap->vrr_max == 0)
