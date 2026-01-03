@@ -1,0 +1,3 @@
+[submodule "drivers/media_modules"]
+	path = drivers/media_modules
+	url = git@192.168.12.166:streambox/media_modules.git
