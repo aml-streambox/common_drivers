@@ -634,6 +634,11 @@ static int hdmitx_validate_mode(struct hdmitx_hw_common *tx_hw, u32 vic)
 		break;
 	case MESON_CPU_ID_S7:
 	case MESON_CPU_ID_T7:
+	    //For T7, max is 4k60, 2k120 and 1080p240
+		ret = (soc_resolution_limited(timing, 4320) && soc_freshrate_limited(timing, 60)) ||
+		       (soc_resolution_limited(timing, 2160) && soc_freshrate_limited(timing, 120)) ||
+		       (soc_resolution_limited(timing, 1080) && soc_freshrate_limited(timing, 240));
+		break;
 	default:
 		ret = soc_resolution_limited(timing, 2160) && soc_freshrate_limited(timing, 60);
 		break;
