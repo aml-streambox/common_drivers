@@ -4163,7 +4163,7 @@ inline int vdin_vsync_reset_mif(int index)
 		return vdin_vsync_reset_mif_t3x(index);
 #endif
 
-	start_line = aml_read_vcbus(VDIN_LCNT_STATUS) & 0xfff;
+	start_line = (aml_read_vcbus(VDIN_LCNT_STATUS) >> 16) & 0x1fff;
 	if (!enable_reset || vdin_reset_flag || start_line > 0)
 		return 0;
 
@@ -4189,6 +4189,7 @@ inline int vdin_vsync_reset_mif(int index)
 					vdin0_wr_mif_reset();
 					break;
 				}
+				udelay(1);
 			}
 			if (i >= vdin_det_idle_wait && vdin_ctl_dbg)
 				pr_info("============== !!! idle wait timeout\n");
@@ -4224,6 +4225,7 @@ inline int vdin_vsync_reset_mif(int index)
 					vdin1_wr_mif_reset();
 					break;
 				}
+				udelay(1);
 			}
 		}
 		aml_write_vcbus(VPU_WRARB_REQEN_SLV_L1C2,

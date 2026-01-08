@@ -4101,15 +4101,12 @@ struct vframe_s *amvideo_toggle_frame(s32 *vd_path_id)
 			    dv_new_vf)
 				break;
 #endif
-			if (debug_flag & DEBUG_FLAG_TOGGLE_FRAME_PER_VSYNC)
-				break;
-			video_get_vf_cnt[0]++;
-			if (video_get_vf_cnt[0] >= 2) {
-				video_drop_vf_cnt[0]++;
-				if (debug_flag & DEBUG_FLAG_PRINT_DROP_FRAME)
-					pr_info("drop frame: drop count %d\n",
-						video_drop_vf_cnt[0]);
-			}
+			/*
+			 * Always break after toggling one frame to prevent
+			 * double-toggle glitches during clock drift crossover.
+			 * This spreads catch-up smoothly across multiple VSYNCs.
+			 */
+			break;
 		} else {
 			ATRACE_COUNTER(MODULE_NAME,  __LINE__);
 			/* check if current frame's duration has expired,

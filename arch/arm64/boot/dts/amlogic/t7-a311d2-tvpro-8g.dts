@@ -1695,7 +1695,7 @@
 	status = "okay";
 	repeater_tx = <0>;
 	enc_idx = <2>;
-	vrr_type = <2>; /* 1: GAME-VRR, 2: QMS-VRR */
+	vrr_type = <1>; /* 1: GAME-VRR, 2: QMS-VRR */
 	hdmi_repeater = <1>;
 	/* hdcp ctrl 0: sysctrl, 1: drv, 2: linux app */
 	hdcp_ctl_lvl = <1>;
@@ -1721,6 +1721,7 @@
 	cma_size = <280>;
 	frame_buff_num = <10>;
 	vdin_function_sel = <0x101>;
+	urgent_en;
 };
 
 &vdin1 {

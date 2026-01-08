@@ -100,6 +100,10 @@ static struct v4l2_fract fract_discrete[] = {
 	{.numerator = 1, .denominator = 30,},
 	{.numerator = 1, .denominator = 50,},
 	{.numerator = 1, .denominator = 60,},
+	{.numerator = 1, .denominator = 100,},
+	{.numerator = 1, .denominator = 120,},
+	{.numerator = 1, .denominator = 144,},
+	{.numerator = 1, .denominator = 240,},
 };
 
 static struct vdin_v4l2_pix_fmt pix_formats[] = {
@@ -2008,7 +2012,7 @@ v4l2_device_register_fail:
 /* Check loopback source format */
 int vdin_v4l2_loopback_fmt(struct vdin_dev_s *devp)
 {
-	int h, v;
+	int h, v, fps;
 	int err_range = 10;
 	const struct vinfo_s *vinfo;
 
@@ -2020,29 +2024,59 @@ int vdin_v4l2_loopback_fmt(struct vdin_dev_s *devp)
 	vinfo = get_current_vinfo();
 	h = vinfo->width;
 	v = vinfo->height;
-	dprintk(1, "%s,%d; %dx%d,vmode:%d\n", __func__, __LINE__,
-		vinfo->width, vinfo->height, vinfo->mode);
+	/* Calculate fps from vinfo sync_duration */
+	if (vinfo->sync_duration_den)
+		fps = vinfo->sync_duration_num / vinfo->sync_duration_den;
+	else
+		fps = 60; /* default fallback */
+	dprintk(1, "%s,%d; %dx%d@%d,vmode:%d\n", __func__, __LINE__,
+		vinfo->width, vinfo->height, fps, vinfo->mode);
 #else
 	h = vdin_get_active_h(devp);
 	v = vdin_get_active_v(devp);
-	dprintk(1, "%s,%d; %dx%d\n", __func__, __LINE__, vinfo->width, vinfo->height);
+	fps = 60; /* default for non-vout mode */
+	dprintk(1, "%s,%d; %dx%d\n", __func__, __LINE__, h, v);
 #endif
+
+	/* Set format based on resolution AND refresh rate */
 	if (h >= 4096 - err_range && h <= 4096 + err_range &&
 		v >= 2160 - err_range && v <= 2160 + err_range)
 		devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_4096_2160_00HZ;
 	else if (h >= 3840 - err_range && h <= 3840 + err_range &&
 			 v >= 2160 - err_range && v <= 2160 + err_range)
 		devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_3840_2160_00HZ;
+	else if (h >= 2560 - err_range && h <= 2560 + err_range &&
+			 v >= 1440 - err_range && v <= 1440 + err_range)
+		devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_2560X1440_00HZ;
 	else if (h >= 1920 - err_range && h <= 1920 + err_range &&
-			 v >= 1080 - err_range && v <= 1080 + err_range)
-		devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1920X1080P_60HZ;
-	else if (h >= 1280 - err_range && h <= 1280 + err_range &&
-			 v >= 720 - err_range && v <= 720 + err_range)
-		devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1280X720P_60HZ;
-	else
+			 v >= 1080 - err_range && v <= 1080 + err_range) {
+		/* 1080p with multiple refresh rates */
+		if (fps >= 110)
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1920X1080P_120HZ;
+		else if (fps >= 90)
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1920X1080P_100HZ;
+		else if (fps >= 45)
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1920X1080P_50HZ;
+		else
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1920X1080P_60HZ;
+	} else if (h >= 1280 - err_range && h <= 1280 + err_range &&
+			 v >= 720 - err_range && v <= 720 + err_range) {
+		/* 720p with multiple refresh rates */
+		if (fps >= 110)
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1280X720P_120HZ;
+		else if (fps >= 90)
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1280X720P_100HZ;
+		else if (fps >= 45)
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1280X720P_50HZ;
+		else
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1280X720P_60HZ;
+	} else
 		devp->parm.info.fmt = TVIN_SIG_FMT_NULL;
 
-	dprintk(1, "vdin%d,active,h=%d,v=%d\n", devp->index, h, v);
+	/* Also set fps in parm.info for downstream use */
+	devp->parm.info.fps = fps;
+
+	dprintk(1, "vdin%d,active,h=%d,v=%d,fps=%d\n", devp->index, h, v, fps);
 
 	return 0;
 }

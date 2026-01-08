@@ -434,7 +434,7 @@ int frame_lock_calc_lcnt_variance_val(struct vframe_s *vf)
 	}
 
 	lcnt_reg_status = READ_VPP_REG_EX(0x1204, 0);
-	lcnt_reg_val[frame_in_cnt] = lcnt_reg_status & 0xffff;
+	lcnt_reg_val[frame_in_cnt] = (lcnt_reg_status >> 16) & 0x1fff;
 
 	if (frame_in_cnt == 0)
 		vrr_lcnt_variance = 0;

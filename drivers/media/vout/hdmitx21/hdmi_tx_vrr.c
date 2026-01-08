@@ -1150,7 +1150,7 @@ int hdmitx_set_fr_hint(int rate, void *data)
 	}
 
 	/* TODO, hard code vrr_mode */
-	hdev->vrr_mode = T_VRR_QMS;
+	hdev->vrr_mode = T_VRR_GAME;
 	if (hdev->vrr_mode == T_VRR_GAME || hdev->vrr_mode == T_VRR_QMS) {
 		para.type = hdev->vrr_mode;
 	} else {

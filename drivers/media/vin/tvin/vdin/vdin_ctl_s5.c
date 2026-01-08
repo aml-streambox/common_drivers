@@ -2753,7 +2753,7 @@ static unsigned int vdin_reset_flag;
 inline int vdin_vsync_reset_mif_s5(int index)
 {
 	int i;
-	int start_line = aml_read_vcbus(VDIN_LCNT_STATUS) & 0xfff;
+	int start_line = (aml_read_vcbus(VDIN_LCNT_STATUS) >> 16) & 0x1fff;
 
 	if (!enable_reset || vdin_reset_flag || start_line > 0)
 		return 0;
@@ -2780,6 +2780,7 @@ inline int vdin_vsync_reset_mif_s5(int index)
 					vdin0_wr_mif_reset_s5();
 					break;
 				}
+				udelay(1);
 			}
 			if (i >= vdin_det_idle_wait && vdin_ctl_dbg)
 				pr_info("============== !!! idle wait timeout\n");

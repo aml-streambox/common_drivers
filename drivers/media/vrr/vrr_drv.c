@@ -68,6 +68,10 @@ static unsigned int vrr_mnt_buf[VRR_MNT_MAX * 5];
 static int vrr_mnt_cnt;
 
 unsigned int vrr_dly_new;
+
+int vrr_ll_framelock_adj = 2;
+module_param(vrr_ll_framelock_adj, int, 0644);
+MODULE_PARM_DESC(vrr_ll_framelock_adj, "Low latency frame lock vline adjustment range");
 static struct vrr_trace_s vrr_trace;
 
 static void vrr_monitor_save(void)
@@ -289,6 +293,10 @@ static void vrr_hdmi_enable(struct aml_vrr_drv_s *vdrv, unsigned int mode)
 		v_max = vdrv->adj_vline_max;
 		v_min = vdrv->adj_vline_min;
 		vdrv->state |= VRR_STATE_LFC;
+	} else if (vdrv->state & VRR_STATE_LL_FRAMELOCK) {
+		v_max = vdrv->vrr_dev->vline + vrr_ll_framelock_adj;
+		v_min = vdrv->vrr_dev->vline - vrr_ll_framelock_adj;
+		vdrv->state &= ~VRR_STATE_LFC;
 	} else {
 		v_max = vdrv->vrr_dev->vline_max;
 		v_min = vdrv->vrr_dev->vline_min;
@@ -361,6 +369,12 @@ static void vrr_line_delay_update(struct aml_vrr_drv_s *vdrv)
 		vrr_drv_trace(vdrv, str);
 	}
 
+	if (!vdrv->data) {
+		if (vrr_debug_print & VRR_DBG_PR_NORMAL)
+			VRRERR("[%d]: %s: no data\n", vdrv->index, __func__);
+		return;
+	}
+
 	offset = vdrv->data->offset[vdrv->index];
 	switch (vdrv->vrr_dev->output_src) {
 	case VRR_OUTPUT_ENCP:
@@ -377,7 +391,7 @@ static void vrr_line_delay_update(struct aml_vrr_drv_s *vdrv)
 	if (vdrv->data->chip_type == VRR_CHIP_T3X)
 		temp = vrr_reg_getb(VENC_VRR_CTRL_T3X + offset, 16, 32);
 	else
-		temp = vrr_reg_getb(reg + offset, 8, 16);
+		temp = vrr_reg_getb(reg, 8, 16);
 
 	vrr_line_dly = vdrv->line_dly + crop_line;
 
@@ -396,6 +410,12 @@ static void vrr_line_delay_update(struct aml_vrr_drv_s *vdrv)
 		else
 			VSYNC_WRITE_VPP_REG_BITS_VPP_SEL(reg,
 				vrr_line_dly, 8, 16, vrr_vpp_index);
+	} else {
+		/* crop_line == pre_line: direct write (e.g., from debug command) */
+		if (vdrv->data->chip_type == VRR_CHIP_T3X)
+			vrr_reg_setb(VENC_VRR_CTRL_T3X, vrr_line_dly, 16, 32);
+		else
+			vrr_reg_setb(reg, vrr_line_dly, 8, 16);
 	}
 
 	if (vrr_debug_print & VRR_DBG_PR_NORMAL)
@@ -745,6 +765,7 @@ static const char *vrr_debug_usage_str = {
 "Usage:\n"
 "    cat /sys/class/aml_vrr/vrrx/status ; dump vrr status\n"
 "    echo en <val> >/sys/class/aml_vrr/vrrx/debug ; enable/disable vrr\n"
+"    echo mode <val> >/sys/class/aml_vrr/vrrx/debug ; enable/disable low latency frame lock mode\n"
 "    echo line_dly <val> >/sys/class/aml_vrr/vrrx/debug ; set vrr lock line_dly\n"
 "\n"
 };
@@ -831,6 +852,22 @@ static ssize_t vrr_debug_store(struct device *dev,
 	int ret = 0;
 
 	switch (buf[0]) {
+	case 'm': /* ll_framelock mode */
+		ret = sscanf(buf, "mode %d", &temp);
+		if (ret == 1) {
+			mutex_lock(&vrr_mutex);
+			if (temp)
+				vdrv->state |= VRR_STATE_LL_FRAMELOCK;
+			else
+				vdrv->state &= ~VRR_STATE_LL_FRAMELOCK;
+
+			vdrv->state |= VRR_STATE_RESET;
+			vrr_drv_func_en(vdrv, vdrv->enable);
+			mutex_unlock(&vrr_mutex);
+		}
+		VRRPR("[%d]: ll_framelock mode: %d\n", vdrv->index,
+			(vdrv->state & VRR_STATE_LL_FRAMELOCK) ? 1 : 0);
+		break;
 	case 'e': /* en */
 		ret = sscanf(buf, "en %d", &temp);
 		if (ret == 1) {

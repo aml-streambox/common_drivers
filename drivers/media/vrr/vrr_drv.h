@@ -22,6 +22,13 @@
 #define VRR_DBG_PR_ISR          BIT(3)
 #define VRR_DBG_TEST            BIT(4)
 
+/* Adjustment for vline_min in forced VRR passthrough mode.
+ * Positive value lowers vline_min, allowing faster output frame rate.
+ * Range: 0-10, default: 2 (recommended for ~0.2% compensation)
+ */
+extern int vrr_vline_adj;
+extern int vrr_ll_framelock_adj;
+
 #define VRR_MAX_DRV             3
 
 #define VRR_TRACE_SIZE          4088
@@ -60,6 +67,7 @@ struct vrr_data_s {
 #define VRR_STATE_ENCP        BIT(9)
 #define VRR_STATE_SWITCH_OFF  BIT(10)
 #define VRR_STATE_RESET       BIT(11)
+#define VRR_STATE_LL_FRAMELOCK BIT(12)
 #define VRR_STATE_CLR_MASK    0xffff
 //static state
 #define VRR_STATE_VS_IRQ      BIT(16)
