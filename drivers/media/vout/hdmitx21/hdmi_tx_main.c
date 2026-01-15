@@ -2502,15 +2502,31 @@ static ssize_t vrr_mode_store(struct device *dev,
 			hdev->vrr_mode = val;
 		else
 			HDMITX_INFO("only accept as 0, 1 or 2\n");
-
-		return count;
-	}
-	if (strncmp(buf, "game-vrr", 8) == 0)
+	} else if (strncmp(buf, "game-vrr", 8) == 0) {
 		hdev->vrr_mode = T_VRR_GAME;
-	else if (strncmp(buf, "qms-vrr", 7) == 0)
+	} else if (strncmp(buf, "qms-vrr", 7) == 0) {
 		hdev->vrr_mode = T_VRR_QMS;
-	else
+	} else {
 		hdev->vrr_mode = T_VRR_NONE;
+	}
+	
+	if (hdev->vrr_mode == T_VRR_NONE) {
+		hdmitx_vrr_disable();
+	} else {
+		struct vrr_conf_para para = {0};
+		struct hdmi_format_para *fmt_para = &hdev->tx_comm.fmt_para;
+		/* v_freq is in 0.001Hz, rate is in 0.01Hz? v_freq/10 seems standard in vrr.c */
+		int rate = fmt_para->timing.v_freq / 10;
+		
+		para.type = hdev->vrr_mode;
+		para.vrr_enabled = 1;
+		para.duration = rate;
+		para.brr_vic = fmt_para->timing.vic;
+		
+		HDMITX_INFO("Activating VRR mode: %d, rate: %d\n", hdev->vrr_mode, rate);
+		hdmitx_set_vrr_para(&para);
+		hdmitx_vrr_enable();
+	}
 
 	return count;
 }
