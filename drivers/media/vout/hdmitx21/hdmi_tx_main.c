@@ -2511,6 +2511,20 @@ static ssize_t vrr_mode_store(struct device *dev,
 	}
 	
 	if (hdev->vrr_mode == T_VRR_NONE) {
+		struct vrr_conf_para para = {0};
+		struct hdmi_format_para *fmt_para = &hdev->tx_comm.fmt_para;
+		int rate = fmt_para->timing.v_freq / 10;
+
+		/* Send VRR OFF EMP packet first */
+		para.type = T_VRR_GAME;
+		para.vrr_enabled = 0; /* Packet VRR_EN = 0 */
+		para.duration = rate;
+		para.brr_vic = fmt_para->timing.vic;
+		
+		HDMITX_INFO("Sending VRR OFF packet...\n");
+		hdmitx_set_vrr_para(&para);
+		hdmitx_vrr_enable();
+		msleep(100); /* Wait for transmission */
 		hdmitx_vrr_disable();
 	} else {
 		struct vrr_conf_para para = {0};

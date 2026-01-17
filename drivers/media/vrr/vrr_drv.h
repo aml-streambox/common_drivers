@@ -68,6 +68,7 @@ struct vrr_data_s {
 #define VRR_STATE_SWITCH_OFF  BIT(10)
 #define VRR_STATE_RESET       BIT(11)
 #define VRR_STATE_LL_FRAMELOCK BIT(12)
+#define VRR_STATE_NORMAL_BUG_FIX BIT(13)
 #define VRR_STATE_CLR_MASK    0xffff
 //static state
 #define VRR_STATE_VS_IRQ      BIT(16)

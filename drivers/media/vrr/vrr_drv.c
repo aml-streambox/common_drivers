@@ -297,6 +297,10 @@ static void vrr_hdmi_enable(struct aml_vrr_drv_s *vdrv, unsigned int mode)
 		v_max = vdrv->vrr_dev->vline + vrr_ll_framelock_adj;
 		v_min = vdrv->vrr_dev->vline - vrr_ll_framelock_adj;
 		vdrv->state &= ~VRR_STATE_LFC;
+	} else if (vdrv->state & VRR_STATE_NORMAL_BUG_FIX) {
+		v_max = vdrv->adj_vline_max + vrr_ll_framelock_adj;
+		v_min = vdrv->adj_vline_min - vrr_ll_framelock_adj;
+		vdrv->state &= ~VRR_STATE_LFC;
 	} else {
 		v_max = vdrv->vrr_dev->vline_max;
 		v_min = vdrv->vrr_dev->vline_min;
@@ -856,17 +860,24 @@ static ssize_t vrr_debug_store(struct device *dev,
 		ret = sscanf(buf, "mode %d", &temp);
 		if (ret == 1) {
 			mutex_lock(&vrr_mutex);
-			if (temp)
+			if (temp == 1) {
 				vdrv->state |= VRR_STATE_LL_FRAMELOCK;
-			else
+				vdrv->state &= ~VRR_STATE_NORMAL_BUG_FIX;
+			} else if (temp == 2) {
 				vdrv->state &= ~VRR_STATE_LL_FRAMELOCK;
+				vdrv->state |= VRR_STATE_NORMAL_BUG_FIX;
+			} else {
+				vdrv->state &= ~VRR_STATE_LL_FRAMELOCK;
+				vdrv->state &= ~VRR_STATE_NORMAL_BUG_FIX;
+			}
 
 			vdrv->state |= VRR_STATE_RESET;
 			vrr_drv_func_en(vdrv, vdrv->enable);
 			mutex_unlock(&vrr_mutex);
 		}
 		VRRPR("[%d]: ll_framelock mode: %d\n", vdrv->index,
-			(vdrv->state & VRR_STATE_LL_FRAMELOCK) ? 1 : 0);
+			(vdrv->state & VRR_STATE_LL_FRAMELOCK) ? 1 :
+			((vdrv->state & VRR_STATE_NORMAL_BUG_FIX) ? 2 : 0));
 		break;
 	case 'e': /* en */
 		ret = sscanf(buf, "en %d", &temp);

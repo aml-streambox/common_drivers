@@ -897,7 +897,7 @@ static void vrr_init_game_para(struct tx_vrr_params *para)
 
 	timing = hdmitx_mode_vic_to_hdmi_timing(brr_vic);
 	brr_vfront = timing ? timing->v_front : 1920;
-	hdmi_emp_frame_set_member(vrr_pkt, CONF_VRR_EN, 1);
+	hdmi_emp_frame_set_member(vrr_pkt, CONF_VRR_EN, conf->vrr_enabled);
 	hdmi_emp_frame_set_member(vrr_pkt, CONF_FACTOR_M1, fva_factor - 1);
 	hdmi_emp_frame_set_member(vrr_pkt, CONF_BASE_VFRONT, brr_vfront);
 	hdmi_emp_frame_set_member(vrr_pkt, CONF_BASE_REFRESH_RATE, brr_rate);

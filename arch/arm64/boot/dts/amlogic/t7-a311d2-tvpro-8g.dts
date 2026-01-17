@@ -803,7 +803,7 @@
 		aml-audio-card,dai-link@6 {
 			mclk-fs = <256>;
 			continuous-clock;
-			suffix-name = "alsaPORT-loopback";
+			suffix-name = "alsaPORT-loopback-HDMI";
 			cpu {
 				sound-dai = <&loopbacka>;
 				system-clock-frequency = <12288000>;
@@ -812,6 +812,21 @@
 				sound-dai = <&dummy_codec>;
 			};
 		};
+		/*
+		 * Commented out loopbackb dai-link until driver issue is resolved
+		 * aml-audio-card,dai-link@7 {
+		 *	mclk-fs = <256>;
+		 *	continuous-clock;
+		 *	suffix-name = "alsaPORT-loopback-LINE-IN";
+		 *	cpu {
+		 *		sound-dai = <&loopbackb>;
+		 *		system-clock-frequency = <12288000>;
+		 *	};
+		 *	codec {
+		 *		sound-dai = <&dummy_codec>;
+		 *	};
+		 * };
+		 */
 	};
 	/* Audio Related end */
 
@@ -1294,11 +1309,12 @@
 		 * 3: spdifin
 		 * 4: pdmin
 		 */
-		datain_src = <4>;
-		datain_chnum = <4>;
-		datain_chmask = <0xf>;
+		/* tdmin_c = HDMIRX audio input */
+		datain_src = <2>;
+		datain_chnum = <2>;
+		datain_chmask = <0x3>;
 		/* config which data pin for loopback */
-		datain-lane-mask-in = <1 0 1 0>;
+		datain-lane-mask-in = <1 0 0 0>;
 
 		/* calc mclk for datalb */
 		mclk-fs = <256>;
@@ -1314,7 +1330,7 @@
 		 * 6: PAD_TDMINA_D*, oe, refer to core pinmux
 		 * 7: PAD_TDMINB_D*, oe, refer to core pinmux
 		 */
-		/* if tdmin_lb >= 3, use external loopback */
+		/* Disable loopback reference - no mixing with line out */
 		datalb_src = <1>;
 		datalb_chnum = <2>;
 		datalb_chmask = <0x3>;
@@ -1355,11 +1371,12 @@
 		 * 3: spdifin
 		 * 4: pdmin
 		 */
-		datain_src = <4>;
-		datain_chnum = <4>;
-		datain_chmask = <0xf>;
+		/* tdmin_a = LINE IN audio input */
+		datain_src = <0>;
+		datain_chnum = <2>;
+		datain_chmask = <0x3>;
 		/* config which data pin for loopback */
-		datain-lane-mask-in = <1 0 1 0>;
+		datain-lane-mask-in = <1 0 0 0>;
 
 		/*
 		 * tdmin_lb src
@@ -1372,7 +1389,7 @@
 		 * 6: PAD_TDMINA_D*, oe, refer to core pinmux
 		 * 7: PAD_TDMINB_D*, oe, refer to core pinmux
 		 */
-		/* if tdmin_lb >= 3, use external loopback */
+		/* Disable loopback reference - no mixing with line out */
 		datalb_src = <1>;
 		datalb_chnum = <2>;
 		datalb_chmask = <0x3>;
