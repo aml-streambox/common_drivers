@@ -246,10 +246,12 @@
 		vdin1_cma_reserved:linux,vdin1_cma {
 			compatible = "shared-dma-pool";
 			reusable;
-			/* up to 3840x2160 yuv420 8bit and 5 buffers
-			 * 3840x2160x2x5 = 60 M
+			/*
+			 * 4K RGB 5 buffers
+			 * 3840 x 2160 x 4 x 5 = 165,888,000 bytes ~= 158.2 MB
+			 * Using 160 MB (0x0A000000) for alignment and headroom
 			 */
-			size = <0x0 0x03C00000>;
+			size = <0x0 0x0A000000>;
 			alignment = <0x0 0x400000>;
 			alloc-ranges = <0x0 0x0 0x0 0xe0000000>;
 		};
@@ -737,7 +739,7 @@
 		aml-audio-card,dai-link@7 {
 			mclk-fs = <256>;
 			continuous-clock;
-			suffix-name = "alsaPORT-loopback";
+			suffix-name = "alsaPORT-loopback-HDMI";
 			cpu {
 				sound-dai = <&loopbacka>;
 				system-clock-frequency = <12288000>;
@@ -1287,18 +1289,20 @@
 			"tdminlb_mpll",
 			"tdminlb_mclk";
 
-		/* datain src
-		 * 0: tdmin_a;
-		 * 1: tdmin_b;
-		 * 2: tdmin_c;
-		 * 3: spdifin;
-		 * 4: pdmin;
+		/*
+		 * datain src
+		 * 0: tdmin_a
+		 * 1: tdmin_b
+		 * 2: tdmin_c
+		 * 3: spdifin
+		 * 4: pdmin
 		 */
-		datain_src = <4>;
-		datain_chnum = <4>;
-		datain_chmask = <0xf>;
+		/* tdmin_c = HDMIRX audio input */
+		datain_src = <2>;
+		datain_chnum = <2>;
+		datain_chmask = <0x3>;
 		/* config which data pin for loopback */
-		datain-lane-mask-in = <1 0 1 0>;
+		datain-lane-mask-in = <1 0 0 0>;
 
 		/* calc mclk for datalb */
 		mclk-fs = <256>;
