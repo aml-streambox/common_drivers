@@ -23,8 +23,8 @@
 
 / {
 	model = "CoreLab A311D2-TVPro";
-	amlogic-dt-id = "t7-a311d2-tvpro-8g";
-	compatible = "t7-a311d2-tvpro-8g";
+	amlogic-dt-id = "t7_a311d2_tvpro8g";
+	compatible = "t7_a311d2_tvpro8g";
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
 	#size-cells = <2>;
