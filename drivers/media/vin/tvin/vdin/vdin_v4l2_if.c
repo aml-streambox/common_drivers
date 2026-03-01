@@ -81,6 +81,11 @@
 /*give a default page size*/
 #define VDIN_IMG_SIZE		(1024 * 8)
 
+/* Define P010 format if not already defined */
+#ifndef V4L2_PIX_FMT_P010
+#define V4L2_PIX_FMT_P010 v4l2_fourcc('P', '0', '1', '0')
+#endif
+
 int vdin_v4l_debug;
 
 #define dprintk(level, fmt, arg...)				\
@@ -121,6 +126,9 @@ static struct vdin_v4l2_pix_fmt pix_formats[] = {
 
 	{.fourcc = V4L2_PIX_FMT_UYVY,
 	 .depth  = 16, },
+
+	{.fourcc = V4L2_PIX_FMT_P010,
+	 .depth  = 24, },
 };
 
 static struct v4l2_capability g_vdin_v4l2_cap[VDIN_MAX_DEVS] = {
@@ -281,6 +289,21 @@ void vdin_fill_pix_format(struct vdin_dev_s *devp)
 				v4l2_fmt->fmt.pix_mp.width;
 			v4l2_fmt->fmt.pix_mp.plane_fmt[1].bytesperline =
 				v4l2_fmt->fmt.pix_mp.width / 2;
+		} else if (v4l2_fmt->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010) {
+			/* P010: 10-bit YUV 4:2:0, 2 planes
+			 * Plane 0 (Y): width * height * 2 bytes (16-bit per pixel)
+			 * Plane 1 (UV): width * height bytes (4:2:0 subsampled, 4 bytes per UV pair)
+			 *   - width/2 * height/2 UV pairs * 4 bytes = width * height / 2
+			 *   - But hardware uses width * height for DMA alignment
+			 */
+			v4l2_fmt->fmt.pix_mp.plane_fmt[0].sizeimage =
+				v4l2_fmt->fmt.pix_mp.width * v4l2_fmt->fmt.pix_mp.height * 2;
+			v4l2_fmt->fmt.pix_mp.plane_fmt[1].sizeimage =
+				v4l2_fmt->fmt.pix_mp.width * v4l2_fmt->fmt.pix_mp.height;
+			v4l2_fmt->fmt.pix_mp.plane_fmt[0].bytesperline =
+				v4l2_fmt->fmt.pix_mp.width * 2;
+			v4l2_fmt->fmt.pix_mp.plane_fmt[1].bytesperline =
+				v4l2_fmt->fmt.pix_mp.width * 2;
 		}
 	} else {
 		dprintk(0, "vdin%d,err.not support num_planes=%d\n ",
@@ -484,7 +507,10 @@ static int vdin_vidioc_reqbufs(struct file *file, void *priv,
 		reqbufs->memory, reqbufs->type, reqbufs->count);
 
 	/*need config by input source type*/
-	devp->source_bitdepth = VDIN_COLOR_DEEPS_8BIT;
+	if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+		devp->source_bitdepth = VDIN_COLOR_DEEPS_10BIT;
+	else
+		devp->source_bitdepth = VDIN_COLOR_DEEPS_8BIT;
 	devp->vb_queue.type = reqbufs->type;
 
 	//vdin_buffer_calculate(devp, req_buffs_num);
@@ -768,6 +794,24 @@ static int vdin_vidioc_g_fmt_vid_cap_mplane(struct file *file,
 	f->fmt.pix_mp.field = devp->v4l2_fmt.fmt.pix_mp.field;
 	f->fmt.pix_mp.pixelformat = devp->v4l2_fmt.fmt.pix_mp.pixelformat;
 	f->fmt.pix_mp.num_planes = devp->v4l2_fmt.fmt.pix_mp.num_planes;
+	
+	/* Copy plane_fmt info for multi-plane formats */
+	if (f->fmt.pix_mp.num_planes > 0) {
+		int i;
+		for (i = 0; i < f->fmt.pix_mp.num_planes; i++) {
+			f->fmt.pix_mp.plane_fmt[i].bytesperline =
+				devp->v4l2_fmt.fmt.pix_mp.plane_fmt[i].bytesperline;
+			f->fmt.pix_mp.plane_fmt[i].sizeimage =
+				devp->v4l2_fmt.fmt.pix_mp.plane_fmt[i].sizeimage;
+		}
+	}
+	
+	/* Set BT.2020 colorspace for P010 HDR format */
+	if (f->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010) {
+		f->fmt.pix_mp.colorspace = V4L2_COLORSPACE_BT2020;
+		f->fmt.pix_mp.xfer_func = V4L2_XFER_FUNC_SMPTE2084;
+	}
+	
 	dprintk(1, "%s:wxh:%dx%d,quant:%d,enc:%d,field:%d,pixelformat:0x%x num_planes=%d\n",
 		__func__,
 		f->fmt.pix_mp.width, f->fmt.pix_mp.height,
@@ -809,7 +853,14 @@ static int vdin_vidioc_s_fmt_vid_cap_mplane(struct file *file,
 	devp->v4l2_fmt.fmt.pix_mp.ycbcr_enc    = fmt->fmt.pix_mp.ycbcr_enc;
 	devp->v4l2_fmt.fmt.pix_mp.field        = fmt->fmt.pix_mp.field;
 	devp->v4l2_fmt.fmt.pix_mp.pixelformat  = fmt->fmt.pix_mp.pixelformat;
-	devp->v4l2_fmt.fmt.pix_mp.num_planes   = fmt->fmt.pix_mp.num_planes;
+	
+	/* Ensure correct num_planes for P010 format */
+	if (fmt->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010) {
+		devp->v4l2_fmt.fmt.pix_mp.num_planes = 2;
+		fmt->fmt.pix_mp.num_planes = 2;
+	} else {
+		devp->v4l2_fmt.fmt.pix_mp.num_planes = fmt->fmt.pix_mp.num_planes;
+	}
 
 	vdin_fill_pix_format(devp);
 	for (i = 0; i < fmt->fmt.pix_mp.num_planes; i++) {
@@ -2153,6 +2204,8 @@ int vdin_v4l2_start_tvin(struct vdin_dev_s *devp)
 	else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12 ||
 		devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12M)
 		vdin_cap_param.dfmt = TVIN_NV12;
+	else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+		vdin_cap_param.dfmt = TVIN_P010;
 	else
 		vdin_cap_param.dfmt = TVIN_YUV422;
 

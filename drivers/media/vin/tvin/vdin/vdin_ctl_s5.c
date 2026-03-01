@@ -33,6 +33,11 @@
 #include "vdin_hdr.h"
 #include "vdin_hw.h"
 
+/* Define P010 format if not already defined */
+#ifndef V4L2_PIX_FMT_P010
+#define V4L2_PIX_FMT_P010 v4l2_fourcc('P', '0', '1', '0')
+#endif
+
 #define VDIN_V_SHRINK_H_LIMIT 1280
 #define TVIN_MAX_PIX_CLK 20000
 #define META_RETRY_MAX 10
@@ -619,6 +624,8 @@ void vdin_get_format_convert_s5(struct vdin_dev_s *devp)
 			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21 ||
 				devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21M)
 				format_convert = VDIN_FORMAT_CONVERT_RGB_NV21;
+			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+				format_convert = VDIN_FORMAT_CONVERT_RGB_NV12;
 			else
 				format_convert = VDIN_FORMAT_CONVERT_RGB_YUV422;
 		} else {
@@ -628,6 +635,8 @@ void vdin_get_format_convert_s5(struct vdin_dev_s *devp)
 			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21 ||
 				devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21M)
 				format_convert = VDIN_FORMAT_CONVERT_YUV_NV21;
+			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+				format_convert = VDIN_FORMAT_CONVERT_YUV_NV12;
 			else
 				format_convert = VDIN_FORMAT_CONVERT_YUV_YUV422;
 		}
@@ -3439,8 +3448,13 @@ void vdin_set_bitdepth_s5(struct vdin_dev_s *devp)
 		break;
 	}
 
-	if (devp->work_mode == VDIN_WORK_MD_V4L)
-		bit_dep = VDIN_COLOR_DEEPS_8BIT;
+	if (devp->work_mode == VDIN_WORK_MD_V4L) {
+		/* Keep 10-bit mode for P010 format */
+		if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+			bit_dep = VDIN_COLOR_DEEPS_10BIT;
+		else
+			bit_dep = VDIN_COLOR_DEEPS_8BIT;
+	}
 	devp->source_bitdepth = bit_dep;
 #ifdef VDIN_BRINGUP_BYPASS_COLOR_CNVT
 	devp->source_bitdepth = devp->prop.colordepth;

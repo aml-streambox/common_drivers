@@ -155,7 +155,11 @@ void vdin_canvas_start_config(struct vdin_dev_s *devp)
 	case VDIN_FORMAT_CONVERT_YUV_NV21:
 	case VDIN_FORMAT_CONVERT_RGB_NV12:
 	case VDIN_FORMAT_CONVERT_RGB_NV21:
-		devp->canvas_w = max_buf_width;
+		/* P010 (10-bit) requires 2 bytes per pixel, NV12/NV21 (8-bit) requires 1 byte */
+		if (devp->source_bitdepth > VDIN_MIN_SOURCE_BITDEPTH)
+			devp->canvas_w = max_buf_width * 2;
+		else
+			devp->canvas_w = max_buf_width;
 		canvas_num = canvas_num / 2;
 		canvas_step = 2;
 		break;
@@ -325,7 +329,11 @@ void vdin_canvas_auto_config(struct vdin_dev_s *devp)
 		/* screencap case:end */
 		canvas_num = canvas_num / 2;
 		canvas_step = 2;
-		devp->canvas_w = h_active;
+		/* P010 (10-bit) requires 2 bytes per pixel, NV12/NV21 (8-bit) requires 1 byte */
+		if (devp->source_bitdepth > VDIN_MIN_SOURCE_BITDEPTH)
+			devp->canvas_w = h_active * 2;
+		else
+			devp->canvas_w = h_active;
 		break;
 	case VDIN_FORMAT_CONVERT_YUV_YUV422:
 	case VDIN_FORMAT_CONVERT_RGB_YUV422:

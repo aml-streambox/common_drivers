@@ -49,6 +49,11 @@
 #include "vdin_hw.h"
 #include "../hdmirx/hdmi_rx_drv_ext.h"
 
+/* Define P010 format if not already defined */
+#ifndef V4L2_PIX_FMT_P010
+#define V4L2_PIX_FMT_P010 v4l2_fourcc('P', '0', '1', '0')
+#endif
+
 #define VDIN_V_SHRINK_H_LIMIT 1280
 #define TVIN_MAX_PIX_CLK 20000
 #define META_RETRY_MAX 10
@@ -670,6 +675,8 @@ void vdin_get_format_convert(struct vdin_dev_s *devp)
 				format_convert = VDIN_FORMAT_CONVERT_YUV_NV21;
 			} else if (devp->prop.dest_cfmt == TVIN_NV12) {
 				format_convert = VDIN_FORMAT_CONVERT_YUV_NV12;
+			} else if (devp->prop.dest_cfmt == TVIN_P010) {
+				format_convert = VDIN_FORMAT_CONVERT_YUV_NV12;
 			} else {
 				if (manual_md &&
 				    devp->prop.dest_cfmt == TVIN_RGB444)
@@ -795,6 +802,8 @@ void vdin_get_format_convert(struct vdin_dev_s *devp)
 			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21 ||
 				devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21M)
 				format_convert = VDIN_FORMAT_CONVERT_RGB_NV21;
+			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+				format_convert = VDIN_FORMAT_CONVERT_RGB_NV12;
 			else
 				format_convert = VDIN_FORMAT_CONVERT_RGB_YUV422;
 		} else {
@@ -804,6 +813,8 @@ void vdin_get_format_convert(struct vdin_dev_s *devp)
 			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21 ||
 				devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21M)
 				format_convert = VDIN_FORMAT_CONVERT_YUV_NV21;
+			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+				format_convert = VDIN_FORMAT_CONVERT_YUV_NV12;
 			else
 				format_convert = VDIN_FORMAT_CONVERT_YUV_YUV422;
 		}
@@ -2723,14 +2734,17 @@ void vdin_set_frame_mif_write_addr(struct vdin_dev_s *devp,
 	if (vfe->vf.plane_num == 2)
 		phy_addr_chroma = vfe->vf.canvas0_config[1].phy_addr;
 
-	/*if (vdin_ctl_dbg) {*/
-	/*	pr_info("mif fmt:0x%x (0:422,1:444,2:NV21) bit:0x%x h:%d\n",*/
-	/*		devp->mif_fmt, devp->source_bitdepth, hsize);*/
-	/*	pr_info("phy addr luma:0x%x chroma:0x%x\n",*/
-	/*		phy_addr_luma, phy_addr_chroma);*/
-	/*	pr_info("stride luma:0x%x, chroma:0x%x\n",*/
-	/*		stride_luma, stride_chroma);*/
-	/*}*/
+	/* Debug output for P010 troubleshooting */
+	if (devp->source_bitdepth > VDIN_COLOR_DEEPS_8BIT ||
+	    devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010) {
+		pr_info("%s: P010 Debug - format:0x%x bitdepth:%d h_active:%d v_active:%d\n",
+			__func__, devp->v4l2_fmt.fmt.pix_mp.pixelformat,
+			devp->source_bitdepth, devp->h_active, devp->v_active);
+		pr_info("%s: P010 Debug - canvas_w:%d canvas_h:%d stride:%d\n",
+			__func__, devp->canvas_w, devp->canvas_h, stride_luma);
+		pr_info("%s: P010 Debug - hsize:%d format_convert:%d full_pack:%d\n",
+			__func__, hsize, devp->format_convert, devp->full_pack);
+	}
 
 	if (rdma_enable) {
 		rdma_write_reg(devp->rdma_handle,
@@ -4996,8 +5010,13 @@ void vdin_set_bitdepth(struct vdin_dev_s *devp)
 		break;
 	}
 
-	if (devp->work_mode == VDIN_WORK_MD_V4L)
-		bit_dep = VDIN_COLOR_DEEPS_8BIT;
+	if (devp->work_mode == VDIN_WORK_MD_V4L) {
+		/* Keep 10-bit mode for P010 format */
+		if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+			bit_dep = VDIN_COLOR_DEEPS_10BIT;
+		else
+			bit_dep = VDIN_COLOR_DEEPS_8BIT;
+	}
 	devp->source_bitdepth = bit_dep;
 #ifdef VDIN_BRINGUP_BYPASS_COLOR_CNVT
 	devp->source_bitdepth = devp->prop.colordepth;
@@ -5020,6 +5039,13 @@ void vdin_set_bitdepth(struct vdin_dev_s *devp)
 
 static void vdin_get_video_format(struct vdin_dev_s *devp)
 {
+	/* Check for P010 format first */
+	if (devp->work_mode == VDIN_WORK_MD_V4L &&
+	    devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010) {
+		devp->vdin2vpp_info.cfmt = TVIN_P010;
+		return;
+	}
+
 	switch (devp->format_convert) {
 	case VDIN_FORMAT_CONVERT_YUV_YUV444:
 	case VDIN_FORMAT_CONVERT_RGB_YUV444:
