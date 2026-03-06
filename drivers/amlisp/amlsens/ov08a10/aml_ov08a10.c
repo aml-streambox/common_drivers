@@ -823,7 +823,7 @@ static int ov08a10_ctrls_init(struct ov08a10 *ov08a10)
 	v4l2_ctrl_handler_init(&ov08a10->ctrls, 9);
 
 	v4l2_ctrl_new_std(&ov08a10->ctrls, &ov08a10_ctrl_ops,
-				V4L2_CID_GAIN, 0, 0xffff, 1, 0);
+				V4L2_CID_GAIN, 0, 0xF0, 1, 0);
 
 	v4l2_ctrl_new_std(&ov08a10->ctrls, &ov08a10_ctrl_ops,
 				V4L2_CID_EXPOSURE, 0, 0xffff, 1, 0);
