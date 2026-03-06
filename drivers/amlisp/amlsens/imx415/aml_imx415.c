@@ -692,7 +692,8 @@ static int imx415_log_status(struct v4l2_subdev *sd)
 int imx415_sbdev_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh) {
 	struct imx415 *imx415 = to_imx415(sd);
 
-	imx415_power_on(imx415->dev, imx415->gpio);
+	if (atomic_inc_return(&imx415->open_count) == 1)
+		imx415_power_on(imx415->dev, imx415->gpio);
 
 	return 0;
 }
@@ -701,7 +702,8 @@ int imx415_sbdev_close(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh) {
 	struct imx415 *imx415 = to_imx415(sd);
 
 	imx415_stop_streaming(imx415);
-	imx415_power_off(imx415->dev, imx415->gpio);
+	if (atomic_dec_and_test(&imx415->open_count))
+		imx415_power_off(imx415->dev, imx415->gpio);
 
 	return 0;
 }

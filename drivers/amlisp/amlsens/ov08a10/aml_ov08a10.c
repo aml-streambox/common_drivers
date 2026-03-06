@@ -710,14 +710,18 @@ static int ov08a10_log_status(struct v4l2_subdev *sd)
 
 int ov08a10_sbdev_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh) {
 	struct ov08a10 *ov08a10 = to_ov08a10(sd);
-	ov08a10_power_on(ov08a10->dev, ov08a10->gpio);
+
+	if (atomic_inc_return(&ov08a10->open_count) == 1)
+		ov08a10_power_on(ov08a10->dev, ov08a10->gpio);
 	return 0;
 }
 
 int ov08a10_sbdev_close(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh) {
 	struct ov08a10 *ov08a10 = to_ov08a10(sd);
 	ov08a10_set_stream(sd, 0);
-	ov08a10_power_off(ov08a10->dev, ov08a10->gpio);
+
+	if (atomic_dec_and_test(&ov08a10->open_count))
+		ov08a10_power_off(ov08a10->dev, ov08a10->gpio);
 	return 0;
 }
 
