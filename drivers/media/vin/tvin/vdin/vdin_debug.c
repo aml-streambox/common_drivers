@@ -3758,7 +3758,8 @@ start_chk:
 			pr_err("miss parameters .\n");
 		} else if (kstrtoul(parm[1], 10, &val) == 0) {
 			devp->full_pack = val;
-			pr_info("full_pack(%d):%d\n\n", devp->index,
+			devp->full_pack_user_set = 1;
+			pr_info("full_pack(%d):%d (user set)\n\n", devp->index,
 				devp->full_pack);
 		}
 	} else if (!strcmp(parm[0], "flags_isr")) {

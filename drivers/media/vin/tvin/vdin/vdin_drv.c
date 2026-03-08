@@ -78,6 +78,11 @@
 #include "vdin_ctl.h"
 #include "vdin_sm.h"
 #include "vdin_vf.h"
+
+/* Define Amlogic YUV422 10-bit packed format if not already defined */
+#ifndef V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED
+#define V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED v4l2_fourcc('A', 'M', 'L', 'Y')
+#endif
 #include "vdin_canvas.h"
 #include "vdin_afbce.h"
 #include "vdin_v4l2_dbg.h"
@@ -941,6 +946,14 @@ static void vdin_vf_init(struct vdin_dev_s *devp)
 			addr = vdin_canvas_ids[index][vf->index];
 			vf->plane_num = 1;
 			break;
+		}
+
+		/* Override: AMLOGIC_YUV422_10BIT_PACKED is single-plane packed format */
+		if (devp->work_mode == VDIN_WORK_MD_V4L &&
+		    devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED) {
+			vf->plane_num = 1;
+			chroma_size = 0;
+			addr = vdin_canvas_ids[index][vf->index];
 		}
 
 		if (devp->dtdata->hw_ver >= VDIN_HW_T7 &&
@@ -7089,3 +7102,8 @@ RESERVEDMEM_OF_DECLARE(vdin, "amlogic, vdin_memory", vdin_mem_setup);
 //MODULE_DESCRIPTION("AMLOGIC VDIN Driver");
 //MODULE_LICENSE("GPL");
 //MODULE_AUTHOR("Xu Lin <lin.xu@amlogic.com>");
+
+/* Import VFS namespace for file I/O operations in debug functions */
+#ifdef CONFIG_AMLOGIC_ENABLE_VIDEO_PIPELINE_DUMP_DATA
+MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+#endif

@@ -25,6 +25,12 @@ source "$(COMMON_DRIVERS_DIR)/drivers/media/vin/tvin/hdmirx/Kconfig"
 source "$(COMMON_DRIVERS_DIR)/drivers/media/vin/tvin/dsc_dec/Kconfig"
 endif
 
+config AMLOGIC_ENABLE_VIDEO_PIPELINE_DUMP_DATA
+        bool "Enable video pipeline dump data"
+        default y
+        help
+            Enable standard file I/O for dumping video data
+
 config AMLOGIC_TVIN_USE_DEBUG_FILE
         tristate "Enable vdin debug file"
         depends on AMLOGIC_DEBUG_FILE && !AMLOGIC_ENABLE_VIDEO_PIPELINE_DUMP_DATA

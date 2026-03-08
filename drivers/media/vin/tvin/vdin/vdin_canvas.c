@@ -39,6 +39,11 @@
 #include "vdin_hdr.h"
 #include "vdin_mem_scatter.h"
 
+/* Define Amlogic YUV422 10-bit packed format if not already defined */
+#ifndef V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED
+#define V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED v4l2_fourcc('A', 'M', 'L', 'Y')
+#endif
+
 /*the value depending on dts config mem limit
  *for skip two vframe case,need +2
  */

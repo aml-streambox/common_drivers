@@ -147,7 +147,6 @@ static void dump_test_yuv(int flag)
 	char name_buf[32];
 	int data_size;
 	u8 *data_addr;
-	mm_segment_t fs;
 	loff_t pos;
 
 	//use flag to distinguish src and dst vframe

@@ -3193,12 +3193,14 @@ void vdin_set_bitdepth_t3x(struct vdin_dev_s *devp)
 	unsigned int convert_fmt, offset;
 
 	offset = devp->addr_offset;
-	/* yuv 422 full pack check */
-	if (devp->color_depth_support &
-	    VDIN_WR_COLOR_DEPTH_10BIT_FULL_PACK_MODE)
-		devp->full_pack = VDIN_422_FULL_PK_EN;
-	else
-		devp->full_pack = VDIN_422_FULL_PK_DIS;
+	/* yuv 422 full pack check - only auto-set if user hasn't manually set it */
+	if (!devp->full_pack_user_set) {
+		if (devp->color_depth_support &
+		    VDIN_WR_COLOR_DEPTH_10BIT_FULL_PACK_MODE)
+			devp->full_pack = VDIN_422_FULL_PK_EN;
+		else
+			devp->full_pack = VDIN_422_FULL_PK_DIS;
+	}
 
 	/*hw verify:de-tunnel 444 to 422 12bit*/
 	//if (devp->dtdata->ipt444_to_422_12bit && vdin_cfg_444_to_422_wmif_en)

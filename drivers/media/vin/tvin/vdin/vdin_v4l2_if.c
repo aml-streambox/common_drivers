@@ -86,6 +86,11 @@
 #define V4L2_PIX_FMT_P010 v4l2_fourcc('P', '0', '1', '0')
 #endif
 
+/* Define Amlogic YUV422 10-bit packed format if not already defined */
+#ifndef V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED
+#define V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED v4l2_fourcc('A', 'M', 'L', 'Y')
+#endif
+
 int vdin_v4l_debug;
 
 #define dprintk(level, fmt, arg...)				\
@@ -129,6 +134,9 @@ static struct vdin_v4l2_pix_fmt pix_formats[] = {
 
 	{.fourcc = V4L2_PIX_FMT_P010,
 	 .depth  = 24, },
+
+	{.fourcc = V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED,
+	 .depth  = 20, },  /* 40 bits per 2 pixels = 20 bits per pixel average */
 };
 
 static struct v4l2_capability g_vdin_v4l2_cap[VDIN_MAX_DEVS] = {
@@ -259,12 +267,24 @@ void vdin_fill_pix_format(struct vdin_dev_s *devp)
 				v4l2_fmt->fmt.pix_mp.width * v4l2_fmt->fmt.pix_mp.height * 2;
 			v4l2_fmt->fmt.pix_mp.plane_fmt[0].bytesperline =
 				(v4l2_fmt->fmt.pix_mp.width * 16) >> 3;
-		} else if (v4l2_fmt->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12 ||
-				   v4l2_fmt->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21) {
+	} else if (v4l2_fmt->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12 ||
+			   v4l2_fmt->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21) {
 			v4l2_fmt->fmt.pix_mp.plane_fmt[0].sizeimage =
 				v4l2_fmt->fmt.pix_mp.width * v4l2_fmt->fmt.pix_mp.height * 3 / 2;
 			v4l2_fmt->fmt.pix_mp.plane_fmt[0].bytesperline =
 				(v4l2_fmt->fmt.pix_mp.width * 12) >> 3;
+		} else if (v4l2_fmt->fmt.pix_mp.pixelformat ==
+				   V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED) {
+			/* AMLOGIC_YUV422_10BIT_PACKED: 40-bit packed YUV422 10-bit
+			 * Single plane, 5 bytes per 2 pixels (2.5 bytes per pixel)
+			 * bytesperline = width * 5 / 2
+			 * sizeimage = bytesperline * height
+			 */
+			v4l2_fmt->fmt.pix_mp.plane_fmt[0].bytesperline =
+				(v4l2_fmt->fmt.pix_mp.width * 5) / 2;
+			v4l2_fmt->fmt.pix_mp.plane_fmt[0].sizeimage =
+				v4l2_fmt->fmt.pix_mp.plane_fmt[0].bytesperline *
+				v4l2_fmt->fmt.pix_mp.height;
 		}
 		v4l2_fmt->fmt.pix_mp.plane_fmt[1].sizeimage = 0;
 		v4l2_fmt->fmt.pix_mp.plane_fmt[1].bytesperline = 0;
@@ -507,7 +527,8 @@ static int vdin_vidioc_reqbufs(struct file *file, void *priv,
 		reqbufs->memory, reqbufs->type, reqbufs->count);
 
 	/*need config by input source type*/
-	if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+	if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010 ||
+	    devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED)
 		devp->source_bitdepth = VDIN_COLOR_DEEPS_10BIT;
 	else
 		devp->source_bitdepth = VDIN_COLOR_DEEPS_8BIT;
@@ -806,8 +827,9 @@ static int vdin_vidioc_g_fmt_vid_cap_mplane(struct file *file,
 		}
 	}
 	
-	/* Set BT.2020 colorspace for P010 HDR format */
-	if (f->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010) {
+	/* Set BT.2020 colorspace for 10-bit HDR formats */
+	if (f->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010 ||
+	    f->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED) {
 		f->fmt.pix_mp.colorspace = V4L2_COLORSPACE_BT2020;
 		f->fmt.pix_mp.xfer_func = V4L2_XFER_FUNC_SMPTE2084;
 	}
@@ -858,6 +880,10 @@ static int vdin_vidioc_s_fmt_vid_cap_mplane(struct file *file,
 	if (fmt->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010) {
 		devp->v4l2_fmt.fmt.pix_mp.num_planes = 2;
 		fmt->fmt.pix_mp.num_planes = 2;
+	} else if (fmt->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED) {
+		/* AMLOGIC is single-plane packed format */
+		devp->v4l2_fmt.fmt.pix_mp.num_planes = 1;
+		fmt->fmt.pix_mp.num_planes = 1;
 	} else {
 		devp->v4l2_fmt.fmt.pix_mp.num_planes = fmt->fmt.pix_mp.num_planes;
 	}
@@ -2204,9 +2230,16 @@ int vdin_v4l2_start_tvin(struct vdin_dev_s *devp)
 	else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12 ||
 		devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12M)
 		vdin_cap_param.dfmt = TVIN_NV12;
-	else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+	else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010) {
 		vdin_cap_param.dfmt = TVIN_P010;
-	else
+		pr_info("%s: vdin%d P010 format\n",
+			__func__, devp->index);
+	} else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat ==
+		   V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED) {
+		vdin_cap_param.dfmt = TVIN_YUV422;
+		pr_info("%s: vdin%d AMLOGIC_YUV422_10BIT_PACKED format\n",
+			__func__, devp->index);
+	} else
 		vdin_cap_param.dfmt = TVIN_YUV422;
 
 	if (vdin_cap_param.h_active && vdin_cap_param.v_active &&

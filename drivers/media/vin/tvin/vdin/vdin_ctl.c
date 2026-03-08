@@ -54,6 +54,11 @@
 #define V4L2_PIX_FMT_P010 v4l2_fourcc('P', '0', '1', '0')
 #endif
 
+/* Define Amlogic YUV422 10-bit packed format if not already defined */
+#ifndef V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED
+#define V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED v4l2_fourcc('A', 'M', 'L', 'Y')
+#endif
+
 #define VDIN_V_SHRINK_H_LIMIT 1280
 #define TVIN_MAX_PIX_CLK 20000
 #define META_RETRY_MAX 10
@@ -802,10 +807,12 @@ void vdin_get_format_convert(struct vdin_dev_s *devp)
 			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21 ||
 				devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21M)
 				format_convert = VDIN_FORMAT_CONVERT_RGB_NV21;
-			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
-				format_convert = VDIN_FORMAT_CONVERT_RGB_NV12;
-			else
-				format_convert = VDIN_FORMAT_CONVERT_RGB_YUV422;
+		else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+			format_convert = VDIN_FORMAT_CONVERT_RGB_NV12;
+		else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED)
+			format_convert = VDIN_FORMAT_CONVERT_RGB_YUV422;
+		else
+			format_convert = VDIN_FORMAT_CONVERT_RGB_YUV422;
 		} else {
 			if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12 ||
 				devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12M)
@@ -813,10 +820,12 @@ void vdin_get_format_convert(struct vdin_dev_s *devp)
 			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21 ||
 				devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV21M)
 				format_convert = VDIN_FORMAT_CONVERT_YUV_NV21;
-			else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
-				format_convert = VDIN_FORMAT_CONVERT_YUV_NV12;
-			else
-				format_convert = VDIN_FORMAT_CONVERT_YUV_YUV422;
+		else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+			format_convert = VDIN_FORMAT_CONVERT_YUV_NV12;
+		else if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED)
+			format_convert = VDIN_FORMAT_CONVERT_YUV_YUV422;
+		else
+			format_convert = VDIN_FORMAT_CONVERT_YUV_YUV422;
 		}
 	}
 
@@ -2734,9 +2743,11 @@ void vdin_set_frame_mif_write_addr(struct vdin_dev_s *devp,
 	if (vfe->vf.plane_num == 2)
 		phy_addr_chroma = vfe->vf.canvas0_config[1].phy_addr;
 
-	/* Debug output for P010 troubleshooting */
-	if (devp->source_bitdepth > VDIN_COLOR_DEEPS_8BIT ||
-	    devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010) {
+	/* Debug output for P010 troubleshooting - only for vdin1 to avoid log flooding */
+	if (devp->index == 1 &&
+	    (devp->source_bitdepth > VDIN_COLOR_DEEPS_8BIT ||
+	     devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010 ||
+	     devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED)) {
 		pr_info("%s: P010 Debug - format:0x%x bitdepth:%d h_active:%d v_active:%d\n",
 			__func__, devp->v4l2_fmt.fmt.pix_mp.pixelformat,
 			devp->source_bitdepth, devp->h_active, devp->v_active);
@@ -4927,12 +4938,26 @@ void vdin_set_bitdepth(struct vdin_dev_s *devp)
 	}
 #endif
 
-	/* yuv 422 full pack check */
-	if (devp->color_depth_support &
-	    VDIN_WR_COLOR_DEPTH_10BIT_FULL_PACK_MODE)
-		devp->full_pack = VDIN_422_FULL_PK_EN;
-	else
+	/* yuv 422 full pack check - only auto-set if user hasn't manually set it */
+	if (!devp->full_pack_user_set) {
+		if (devp->color_depth_support &
+		    VDIN_WR_COLOR_DEPTH_10BIT_FULL_PACK_MODE)
+			devp->full_pack = VDIN_422_FULL_PK_EN;
+		else
+			devp->full_pack = VDIN_422_FULL_PK_DIS;
+	}
+
+	/* Force full_pack=0 for P010 format - P010 uses NV12 layout, not 422 packed */
+	if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010) {
 		devp->full_pack = VDIN_422_FULL_PK_DIS;
+		pr_info("%s: P010 format detected, forcing full_pack=0\n", __func__);
+	}
+
+	/* Enable full_pack for AMLOGIC_YUV422_10BIT_PACKED format */
+	if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED) {
+		devp->full_pack = VDIN_422_FULL_PK_EN;
+		pr_info("%s: AMLOGIC_YUV422_10BIT_PACKED format detected, enabling full_pack\n", __func__);
+	}
 
 	/*hw verify:de-tunnel 444 to 422 12bit*/
 	//if (devp->dtdata->ipt444_to_422_12bit && vdin_cfg_444_to_422_wmif_en)
@@ -5012,7 +5037,8 @@ void vdin_set_bitdepth(struct vdin_dev_s *devp)
 
 	if (devp->work_mode == VDIN_WORK_MD_V4L) {
 		/* Keep 10-bit mode for P010 format */
-		if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010)
+		if (devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010 ||
+		    devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED)
 			bit_dep = VDIN_COLOR_DEEPS_10BIT;
 		else
 			bit_dep = VDIN_COLOR_DEEPS_8BIT;
@@ -5043,6 +5069,13 @@ static void vdin_get_video_format(struct vdin_dev_s *devp)
 	if (devp->work_mode == VDIN_WORK_MD_V4L &&
 	    devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_P010) {
 		devp->vdin2vpp_info.cfmt = TVIN_P010;
+		return;
+	}
+
+	/* Check for AMLOGIC_YUV422_10BIT_PACKED format */
+	if (devp->work_mode == VDIN_WORK_MD_V4L &&
+	    devp->v4l2_fmt.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_AMLOGIC_YUV422_10BIT_PACKED) {
+		devp->vdin2vpp_info.cfmt = TVIN_YUV422;
 		return;
 	}
 

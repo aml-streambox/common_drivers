@@ -985,6 +985,8 @@ struct vdin_dev_s {
 	 *0: config 10bit as 12bit
 	 */
 	unsigned int full_pack;
+	/* Track if user explicitly set full_pack via sysfs */
+	unsigned int full_pack_user_set;
 	/* yuv422 malloc policy for vdin0 debug:
 	 *1: force yuv422 memory alloc up to yuv444 10bit(2.5->4)
 	 *0: use yuv422 memory alloc by default
