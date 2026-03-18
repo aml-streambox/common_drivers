@@ -2730,7 +2730,7 @@
 		compatible = "cnm, MultiEnc";
 		dev_name = "amvenc_multi";
 		status = "okay";
-		config_mm_sz_mb = <200>;
+		config_mm_sz_mb = <300>;
 		clocks = <&clkc CLKID_DOS
 			&clkc CLKID_VAPB
 			&clkc CLKID_WAVE_A_GATE
@@ -4759,4 +4759,3 @@
 		reg_bit = <1>;
 	};
 };
-

@@ -148,8 +148,8 @@
 		codec_mm_cma: linux,codec_mm_cma {
 			compatible = "shared-dma-pool";
 			reusable;
-			/* enlarge codec CMA for 10-bit encode pipeline stability */
-			size = <0x0 0x28000000>;
+			/* enlarge codec CMA to 1GB for 4K 10-bit encode pipeline */
+			size = <0x0 0x40000000>;
 			alignment = <0x0 0x400000>;
 			linux,contiguous-region;
 			alloc-ranges = <0x0 0x0 0x0 0xe0000000>;
@@ -278,11 +278,10 @@
 			compatible = "shared-dma-pool";
 			reusable;
 			/*
-			 * 4K RGB 5 buffers
-			 * 3840 x 2160 x 4 x 5 = 165,888,000 bytes ~= 158.2 MB
-			 * Using 160 MB (0x0A000000) for alignment and headroom
+			 * Reserve enough room for up to 8 large 4K capture buffers
+			 * with extra headroom for alignment/driver overhead.
 			 */
-			size = <0x0 0x0A000000>;
+			size = <0x0 0x20000000>;
 			alignment = <0x0 0x400000>;
 			alloc-ranges = <0x0 0x0 0x0 0xe0000000>;
 		};
@@ -1004,6 +1003,7 @@
 		};
 	};
 };
+
 
 &audiobus {
 	tdma: tdm@0 {
