@@ -1568,8 +1568,12 @@ static int vdin_v4l2_release(struct file *file)
 		return -EFAULT;
 
 	if (devp->flags & VDIN_FLAG_DEC_STARTED) {
-		dprintk(0, "%s error VDIN_FLAG_DEC_STARTED\n", __func__);
-		return -EPERM;
+		dprintk(0, "%s: DEC still started (unclean shutdown?), forcing stop\n",
+			__func__);
+		/* Stop hardware capture, clear flags, free IRQ, release CMA.
+		 * Without this, vb2 queue owner stays stale and the device
+		 * is permanently stuck until reboot. */
+		vdin_v4l2_stop_tvin(devp);
 	}
 
 	/*release que*/

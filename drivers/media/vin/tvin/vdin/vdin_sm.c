@@ -1288,6 +1288,24 @@ void tvin_smr(struct vdin_dev_s *devp)
 				devp->event_info.event_sts;
 			vdin_send_event(devp, devp->event_info.event_sts);
 			wake_up(&devp->queue);
+
+			/* When signal is lost (or unstable) in V4L2 mode,
+			 * signal the VB2 queue error to unblock any pending
+			 * DQBUF/poll waiters (e.g. GStreamer v4l2src).
+			 * Without this, v4l2src blocks forever in DQBUF
+			 * because vb_queue.done_wq is never woken — only
+			 * devp->queue above is woken, which VB2 doesn't
+			 * check.  The error flag auto-clears on the next
+			 * STREAMOFF via vb2_queue_cancel().
+			 *
+			 * Restricted to vdin1+ (index != 0) to protect the
+			 * vdin0 HDMI RX passthrough/display path, which
+			 * must never have its VB2 queue disrupted. */
+			if (devp->index != 0 &&
+			    devp->work_mode == VDIN_WORK_MD_V4L &&
+			    info->status != TVIN_SIG_STATUS_STABLE &&
+			    vb2_is_streaming(&devp->vb_queue))
+				vb2_queue_error(&devp->vb_queue);
 		}
 	}
 
