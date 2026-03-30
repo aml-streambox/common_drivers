@@ -209,6 +209,11 @@ enum hdmi_vic {
 	HDMIV_24_3440x1440p60hz,
 	HDMIV_25_2400x1200p90hz,
 	HDMIV_26_3840x1080p60hz,
+	HDMIV_27_2560x1440p60hz,
+	HDMIV_28_2560x1440p120hz,
+	HDMIV_29_2560x1440p144hz,
+	HDMIV_30_1920x1080p144hz,
+	HDMIV_31_1920x1080p240hz,
 	/*not supported in timing*/
 	HDMIV_2560x1080p60hz,
 	HDMIV_2560x1440p60hz,
@@ -219,6 +224,8 @@ enum hdmi_vic {
 
 	HDMI_VIC_END = 0xFFFF,
 };
+
+#define VESA_TIMING_END HDMIV_31_1920x1080p240hz
 
 /* Compliance with old definitions */
 #define HDMIV_640x480p60hz		HDMIV_0_640x480p60hz
@@ -351,6 +358,8 @@ const struct hdmi_timing *hdmitx_mode_match_dtd_timing(struct dtd *t);
  * when failed, return timing with invalid vic(0).
  */
 const struct hdmi_timing *hdmitx_mode_match_vesa_timing(struct vesa_standard_timing *t);
+/* Relaxed VESA DTD match by resolution + approx refresh rate (±3Hz fallback) */
+const struct hdmi_timing *hdmitx_mode_match_vesa_timing_relaxed(struct dtd *t);
 
 void hdmitx_mode_print_hdmi_timing(const struct hdmi_timing *timing);
 void hdmitx_mode_print_all_mode_table(void);

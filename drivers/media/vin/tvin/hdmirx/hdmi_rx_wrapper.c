@@ -2567,6 +2567,7 @@ static const struct freq_ref_s freq_ref[] = {
 	{0,	0,	0,	2560,	1440,	HDMI_2560_1440},
 	{0,	0,	0,	2560,	3488,	HDMI_2560_1440},
 	{0,	0,	0,	2560,	2986,	HDMI_2560_1440},
+	{0,	0,	0,	3440,	1440,	HDMI_3440_1440},
 	/* for AG-506 */
 	{0,	0,	0,	720,	483,	HDMI_480p60},
 	/* for NUC8BEK */
@@ -2643,6 +2644,12 @@ enum fps_e get_fps_index(u8 port)
 	else if ((abs(rx[port].pre.frame_rate - 12000)
 		  < diff_frame_th))
 		ret = E_120HZ;
+	else if ((abs(rx[port].pre.frame_rate - 14400)
+		  < diff_frame_th))
+		ret = E_144HZ;
+	else if ((abs(rx[port].pre.frame_rate - 24000)
+		  < diff_frame_th))
+		ret = E_240HZ;
 	else
 		ret = E_60HZ;
 
@@ -2774,6 +2781,10 @@ enum tvin_sig_fmt_e hdmirx_hw_get_fmt(u8 port)
 			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_100HZ;
 		else if (get_fps_index(port) == E_120HZ)
 			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_120HZ;
+		else if (get_fps_index(port) == E_144HZ)
+			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_144HZ;
+		else if (get_fps_index(port) == E_240HZ)
+			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_240HZ;
 		else
 			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_60HZ;
 		break;
@@ -2989,7 +3000,17 @@ enum tvin_sig_fmt_e hdmirx_hw_get_fmt(u8 port)
 		fmt = TVIN_SIG_FMT_HDMI_2560X2880;
 		break;
 	case HDMI_2560_1440:
-		fmt = TVIN_SIG_FMT_HDMI_2560X1440_00HZ;
+		if (get_fps_index(port) == E_120HZ)
+			fmt = TVIN_SIG_FMT_HDMI_2560X1440P_120HZ;
+		else if (get_fps_index(port) == E_144HZ)
+			fmt = TVIN_SIG_FMT_HDMI_2560X1440P_144HZ;
+		else if (get_fps_index(port) == E_60HZ)
+			fmt = TVIN_SIG_FMT_HDMI_2560X1440P_60HZ;
+		else
+			fmt = TVIN_SIG_FMT_HDMI_2560X1440_00HZ;
+		break;
+	case HDMI_3440_1440:
+		fmt = TVIN_SIG_FMT_HDMI_3440X1440P_60HZ;
 		break;
 	case HDMI_1920x2160p60_16x9:
 		fmt = TVIN_SIG_FMT_HDMI_1920X2160_60HZ;

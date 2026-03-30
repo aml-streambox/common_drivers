@@ -125,7 +125,9 @@ enum fps_e {
 	E_72HZ,
 	E_75HZ,
 	E_100HZ,
-	E_120HZ
+	E_120HZ,
+	E_144HZ,
+	E_240HZ
 };
 
 /* signal */

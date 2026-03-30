@@ -681,6 +681,21 @@ static struct hw_enc_clk_val_group setting_enc_clk_val_24[] = {
 	{{HDMIV_2400x1200p90hz,
 	  HDMI_VIC_END},
 		5600000, 2, 1, 1, VID_PLL_DIV_5, 2, 1, 1, 1, 1},
+	{{HDMIV_27_2560x1440p60hz,
+	  HDMI_VIC_END},
+		4830000, 2, 1, 1, VID_PLL_DIV_5, 2, 1, 1, 1, 1},
+	{{HDMIV_28_2560x1440p120hz,
+	  HDMI_VIC_END},
+		4977500, 1, 1, 1, VID_PLL_DIV_5, 2, 1, 1, 1, 1},
+	{{HDMIV_29_2560x1440p144hz,
+	  HDMI_VIC_END},
+		5710400, 1, 1, 1, VID_PLL_DIV_5, 2, 1, 1, 1, 1},
+	{{HDMIV_30_1920x1080p144hz,
+	  HDMI_VIC_END},
+		3564000, 1, 1, 1, VID_PLL_DIV_5, 2, 1, 1, 1, 1},
+	{{HDMIV_31_1920x1080p240hz,
+	  HDMI_VIC_END},
+		5940000, 1, 1, 1, VID_PLL_DIV_5, 2, 1, 1, 1, 1},
 };
 
 /* For colordepth 10bits */

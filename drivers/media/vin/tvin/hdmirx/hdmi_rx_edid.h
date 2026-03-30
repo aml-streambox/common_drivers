@@ -18,7 +18,7 @@
 #define MAX_EDID_BUF_SIZE	(EDID_SIZE * 6)
 #define PORT_NUM		3
 #define LATENCY_MAX		254
-#define EDID_MAX_REFRESH_RATE 123 //No use for reference board
+#define EDID_MAX_REFRESH_RATE 250 //Support up to 240Hz modes
 
 /* CTA-861G Table 54~57 CTA data block tag codes */
 /* tag code 0x0: reserved */
@@ -102,7 +102,7 @@
 #define MAX_PIXEL_CLK 600
 #define MAX_H_ACTIVE 3840
 #define MAX_V_ACTIVE 2160
-#define MAX_FRAME_RATE 60
+#define MAX_FRAME_RATE 240
 #define REFRESH_RATE 60
 #define EDID_TYPE_256_PLUS_256 0
 #define EDID_TYPE_512_PLUS_512 1
@@ -827,6 +827,7 @@ enum hdmi_vic_e {
 	HDMI_2560_1440,
 	HDMI_2560_1600,
 	HDMI_2688_1520,
+	HDMI_3440_1440,
 	HDMI_1920_1080_INTERLACED,//1920*1080*interlace
 	HDMI_UNSUPPORT,
 };

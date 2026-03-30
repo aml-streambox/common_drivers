@@ -2257,7 +2257,21 @@ next:
 		else
 			store_vesa_idx(prxcap, t->vic);
 	} else {
-		dump_dtd_info(t);
+		/* Relaxed fallback: match VESA modes by resolution + approx refresh rate.
+		 * This handles monitors whose DTD blanking differs slightly from our
+		 * vesa_modes[] table entries (e.g. reduced-blanking variants).
+		 */
+		timing = hdmitx_mode_match_vesa_timing_relaxed(t);
+		if (timing && timing->vic != HDMI_0_UNKNOWN) {
+			t->vic = timing->vic;
+			prxcap->preferred_mode = prxcap->dtd[0].vic;
+			pr_debug(EDID "get dtd%d vic: %d (relaxed match)\n",
+				prxcap->dtd_idx, t->vic);
+			prxcap->dtd_idx++;
+			store_vesa_idx(prxcap, t->vic);
+		} else {
+			dump_dtd_info(t);
+		}
 	}
 }
 

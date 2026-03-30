@@ -70,6 +70,9 @@ MODULE_PARM_DESC(debug, "Debug level (0=off, 1=info, 2=verbose)");
 
 static struct vfm_cap_dev *g_vfm_cap_dev;
 
+/* Forward declaration - defined after provider/receiver ops */
+static const struct vframe_operations_s vfm_cap_vf_provider_ops;
+
 /* ========== Frame Pool Management ========== */
 
 /**
@@ -121,8 +124,8 @@ static struct cap_frame *frame_pool_alloc(struct vfm_cap_dev *dev)
 static void frame_release(struct vfm_cap_dev *dev, struct cap_frame *frame)
 {
 	if (frame->vf) {
-		vfm_cap_dbg(2, "recycling vframe idx=%u to %s\n",
-			     frame->vf->index, dev->recv_name);
+		vfm_cap_dbg(1, "recycling vframe idx=%u slot=%d to %s\n",
+			     frame->vf->index, frame->index, dev->recv_name);
 		vf_put(frame->vf, dev->recv_name);
 		vf_notify_provider(dev->recv_name,
 				   VFRAME_EVENT_RECEIVER_PUT, NULL);
@@ -885,17 +888,23 @@ static int vfm_cap_vf_states(struct vframe_states *states, void *op_arg)
 {
 	struct vfm_cap_dev *dev = (struct vfm_cap_dev *)op_arg;
 	int ready_count = 0;
+	int in_use_count = 0;
 	struct cap_frame *f;
 	unsigned long flags;
+	int i;
 
 	spin_lock_irqsave(&dev->ready_lock, flags);
 	list_for_each_entry(f, &dev->ready_list, list)
 		ready_count++;
+	for (i = 0; i < VFM_CAP_POOL_SIZE; i++) {
+		if (dev->frame_pool[i].in_use)
+			in_use_count++;
+	}
 	spin_unlock_irqrestore(&dev->ready_lock, flags);
 
 	states->vf_pool_size = VFM_CAP_POOL_SIZE;
 	states->buf_recycle_num = 0;
-	states->buf_free_num = VFM_CAP_POOL_SIZE - ready_count;
+	states->buf_free_num = VFM_CAP_POOL_SIZE - in_use_count;
 	states->buf_avail_num = ready_count;
 	return 0;
 }
@@ -974,15 +983,52 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 
 	} else if (type == VFRAME_EVENT_PROVIDER_QUREY_STATE) {
 		struct vframe_states states;
+		int downstream_state;
+		int pool_in_use = 0;
+		int pool_free = 0;
+		int i_qs;
 
 		vfm_cap_vf_states(&states, dev);
-		if (states.buf_avail_num > 0)
+
+		/* Count truly in-use pool slots for diagnostics */
+		for (i_qs = 0; i_qs < VFM_CAP_POOL_SIZE; i_qs++) {
+			if (dev->frame_pool[i_qs].in_use)
+				pool_in_use++;
+		}
+		pool_free = VFM_CAP_POOL_SIZE - pool_in_use;
+
+		/*
+		 * We are ACTIVE if:
+		 * 1. We have frames in ready_list for downstream, OR
+		 * 2. We have free pool slots to accept new frames, OR
+		 * 3. Our downstream is active (will free slots by consuming)
+		 *
+		 * Previously we only checked (1), which caused vdin0 to
+		 * stop sending VFRAME_READY if the pool was exhausted
+		 * (all slots in_use but none in ready_list).
+		 */
+		if (states.buf_avail_num > 0 || pool_free > 0)
 			return RECEIVER_ACTIVE;
+
 		/* Also check downstream */
-		if (vf_notify_receiver(dev->prov_name,
+		downstream_state = vf_notify_receiver(dev->prov_name,
 				       VFRAME_EVENT_PROVIDER_QUREY_STATE,
-				       NULL) == RECEIVER_ACTIVE)
+				       NULL);
+		if (downstream_state == RECEIVER_ACTIVE)
 			return RECEIVER_ACTIVE;
+
+		/*
+		 * We're returning INACTIVE: pool is 100% exhausted and
+		 * downstream is also not consuming. Log this critical state.
+		 */
+		vfm_cap_err("QUREY_STATE: INACTIVE! pool %d/%d in_use, "
+			    "ready=%d, downstream=%s — vdin0 will stop "
+			    "sending frames!\n",
+			    pool_in_use, VFM_CAP_POOL_SIZE,
+			    states.buf_avail_num,
+			    downstream_state == RECEIVER_ACTIVE ?
+			    "ACTIVE" : "INACTIVE");
+
 		return RECEIVER_INACTIVE;
 
 	} else if (type == VFRAME_EVENT_PROVIDER_VFRAME_READY) {
@@ -1011,6 +1057,37 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 			return 0;
 
 		atomic64_inc(&dev->stat_frames);
+
+		/*
+		 * If we were loaded into an already-running pipeline
+		 * (e.g. rmmod + insmod while vdin0 is streaming),
+		 * we never received VFRAME_EVENT_PROVIDER_START.
+		 * Detect this and self-register the VFM provider so
+		 * frames can flow through the tee to downstream.
+		 */
+		if (!dev->vfm_started) {
+			unsigned long pflags;
+
+			vfm_cap_info("late start: provider not registered, self-registering\n");
+
+			spin_lock_irqsave(&dev->ready_lock, pflags);
+			frame_pool_init(dev);
+			INIT_LIST_HEAD(&dev->ready_list);
+			INIT_LIST_HEAD(&dev->pending_list);
+			spin_unlock_irqrestore(&dev->ready_lock, pflags);
+
+			if (vf_get_receiver(dev->prov_name)) {
+				vf_provider_init(&dev->vf_prov,
+						 dev->prov_name,
+						 &vfm_cap_vf_provider_ops,
+						 dev);
+				vf_reg_provider(&dev->vf_prov);
+				vf_notify_receiver(dev->prov_name,
+					VFRAME_EVENT_PROVIDER_START,
+					NULL);
+			}
+			dev->vfm_started = true;
+		}
 
 		/* Update format on first frame or format change */
 		fmt_changed = vfm_cap_update_format(dev, vf);
@@ -1061,8 +1138,17 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		spin_lock_irqsave(&dev->ready_lock, flags);
 		frame = frame_pool_alloc(dev);
 		if (!frame) {
+			int in_use_cnt = 0, j;
+			for (j = 0; j < VFM_CAP_POOL_SIZE; j++) {
+				if (dev->frame_pool[j].in_use)
+					in_use_cnt++;
+			}
 			spin_unlock_irqrestore(&dev->ready_lock, flags);
-			vfm_cap_dbg(1, "pool exhausted, dropping frame\n");
+			vfm_cap_err("pool exhausted! %d/%d in_use, "
+				    "dropping vf idx=%u (total drops=%lld)\n",
+				    in_use_cnt, VFM_CAP_POOL_SIZE,
+				    vf->index,
+				    atomic64_read(&dev->stat_drops) + 1);
 			/* Recycle frame back to vdin0 */
 			vf_put(vf, dev->recv_name);
 			vf_notify_provider(dev->recv_name,
@@ -1698,6 +1784,53 @@ static int vfm_cap_release(struct file *file)
 
 	vfm_cap_info("consumer %u closed (remaining: %u)\n",
 		     cons->id, dev->num_consumers);
+
+	/*
+	 * Auto-drain: when the last V4L2 consumer closes, recycle any
+	 * stuck pool frames back to vdin0.  With zero consumers there
+	 * can be no V4L2/DMA-buf references, so every in_use frame is
+	 * held only by the display path.  Returning them now prevents
+	 * vdin0 write-buffer exhaustion (the "freeze after first run" bug).
+	 */
+	if (dev->num_consumers == 0) {
+		int i, drained = 0;
+
+		/* Cancel pending delivery — no consumers to deliver to */
+		cancel_work_sync(&dev->deliver_work);
+
+		spin_lock_irqsave(&dev->ready_lock, flags);
+		for (i = 0; i < VFM_CAP_POOL_SIZE; i++) {
+			struct cap_frame *frame = &dev->frame_pool[i];
+
+			if (!frame->in_use)
+				continue;
+
+			vfm_cap_info("auto-drain slot %d: refcount=%d vf_idx=%u\n",
+				     i, atomic_read(&frame->refcount),
+				     frame->vf ? frame->vf->index : 0xFFFF);
+
+			if (frame->vf) {
+				vf_put(frame->vf, dev->recv_name);
+				vf_notify_provider(dev->recv_name,
+						   VFRAME_EVENT_RECEIVER_PUT,
+						   NULL);
+				frame->vf = NULL;
+			}
+			frame->in_use = false;
+			atomic_set(&frame->refcount, 0);
+			list_del_init(&frame->list);
+			list_del_init(&frame->pending_node);
+			drained++;
+		}
+		INIT_LIST_HEAD(&dev->ready_list);
+		INIT_LIST_HEAD(&dev->pending_list);
+		spin_unlock_irqrestore(&dev->ready_lock, flags);
+
+		if (drained)
+			vfm_cap_info("auto-drain: recycled %d frames to vdin0\n",
+				     drained);
+	}
+
 	kfree(cons);
 	return 0;
 }
@@ -1807,10 +1940,119 @@ static ssize_t stats_show(struct device *device,
 }
 static DEVICE_ATTR_RO(stats);
 
+static ssize_t pool_state_show(struct device *device,
+			       struct device_attribute *attr, char *buf)
+{
+	struct vfm_cap_dev *dev = g_vfm_cap_dev;
+	unsigned long flags;
+	int i, len = 0;
+	int in_use_count = 0, ready_count = 0, pending_count = 0;
+	struct cap_frame *f;
+
+	if (!dev)
+		return scnprintf(buf, PAGE_SIZE, "not initialized\n");
+
+	spin_lock_irqsave(&dev->ready_lock, flags);
+
+	/* Count ready and pending list entries */
+	list_for_each_entry(f, &dev->ready_list, list)
+		ready_count++;
+	list_for_each_entry(f, &dev->pending_list, pending_node)
+		pending_count++;
+
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+			 "pool_size: %d\n"
+			 "ready_list: %d\n"
+			 "pending_list: %d\n"
+			 "slot  in_use  refcount  vf_idx  phy_addr\n"
+			 "----  ------  --------  ------  --------\n",
+			 VFM_CAP_POOL_SIZE, ready_count, pending_count);
+
+	for (i = 0; i < VFM_CAP_POOL_SIZE; i++) {
+		struct cap_frame *frame = &dev->frame_pool[i];
+
+		if (frame->in_use) {
+			in_use_count++;
+			len += scnprintf(buf + len, PAGE_SIZE - len,
+					 "%4d  %6d  %8d  %6u  0x%llx\n",
+					 i, frame->in_use,
+					 atomic_read(&frame->refcount),
+					 frame->vf ? frame->vf->index : 0xFFFF,
+					 (u64)frame->phy_addr);
+		}
+	}
+
+	spin_unlock_irqrestore(&dev->ready_lock, flags);
+
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+			 "in_use_total: %d / %d\n",
+			 in_use_count, VFM_CAP_POOL_SIZE);
+
+	return len;
+}
+static DEVICE_ATTR_RO(pool_state);
+
+/**
+ * pool_drain_store() - Force-release all stuck cap_frame slots
+ *
+ * Write any value to trigger. This is a last-resort debug tool that
+ * force-recycles all in_use frames back to vdin0, regardless of refcount.
+ * Only use when the pool is stuck and capture is frozen.
+ */
+static ssize_t pool_drain_store(struct device *device,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct vfm_cap_dev *dev = g_vfm_cap_dev;
+	unsigned long flags;
+	int i, drained = 0;
+
+	if (!dev)
+		return -ENODEV;
+
+	vfm_cap_info("FORCE DRAIN: releasing all stuck cap_frames\n");
+
+	/* Cancel any pending delivery work first */
+	cancel_work_sync(&dev->deliver_work);
+
+	spin_lock_irqsave(&dev->ready_lock, flags);
+	for (i = 0; i < VFM_CAP_POOL_SIZE; i++) {
+		struct cap_frame *frame = &dev->frame_pool[i];
+
+		if (frame->in_use) {
+			vfm_cap_info("  drain slot %d: refcount=%d vf_idx=%u\n",
+				     i, atomic_read(&frame->refcount),
+				     frame->vf ? frame->vf->index : 0xFFFF);
+			/* Force-release: recycle vframe to vdin0 */
+			if (frame->vf) {
+				vf_put(frame->vf, dev->recv_name);
+				vf_notify_provider(dev->recv_name,
+						   VFRAME_EVENT_RECEIVER_PUT,
+						   NULL);
+				frame->vf = NULL;
+			}
+			frame->in_use = false;
+			atomic_set(&frame->refcount, 0);
+			list_del_init(&frame->list);
+			list_del_init(&frame->pending_node);
+			drained++;
+		}
+	}
+	INIT_LIST_HEAD(&dev->ready_list);
+	INIT_LIST_HEAD(&dev->pending_list);
+	spin_unlock_irqrestore(&dev->ready_lock, flags);
+
+	vfm_cap_info("FORCE DRAIN: released %d frames\n", drained);
+	return count;
+}
+static DEVICE_ATTR_WO(pool_drain);
+
 static struct attribute *vfm_cap_attrs[] = {
 	&dev_attr_status.attr,
 	&dev_attr_signal_info.attr,
 	&dev_attr_stats.attr,
+	&dev_attr_pool_state.attr,
+	&dev_attr_pool_drain.attr,
 	NULL,
 };
 

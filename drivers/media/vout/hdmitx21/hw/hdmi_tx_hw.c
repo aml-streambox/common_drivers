@@ -611,8 +611,10 @@ static int hdmitx_validate_mode(struct hdmitx_hw_common *tx_hw, u32 vic)
 	if (!tx_hw || !global_tx_hw->chip_data)
 		return -EINVAL;
 
-	/*hdmitx21 VESA mode is not supported yet*/
-	if (vic == HDMI_0_UNKNOWN || vic > HDMI_CEA_VIC_END)
+	/*Allow VESA modes in valid timing range*/
+	if (vic == HDMI_0_UNKNOWN ||
+	    (vic > HDMI_CEA_VIC_END && vic < HDMITX_VESA_OFFSET) ||
+	    vic > VESA_TIMING_END)
 		return -EINVAL;
 
 	timing = hdmitx_mode_vic_to_hdmi_timing(vic);
@@ -634,9 +636,10 @@ static int hdmitx_validate_mode(struct hdmitx_hw_common *tx_hw, u32 vic)
 		break;
 	case MESON_CPU_ID_S7:
 	case MESON_CPU_ID_T7:
-	    //For T7, max is 4k60, 2k120 and 1080p240
+	    //For T7, max is 4k60, 2k120, 1440p144 and 1080p240
 		ret = (soc_resolution_limited(timing, 4320) && soc_freshrate_limited(timing, 60)) ||
 		       (soc_resolution_limited(timing, 2160) && soc_freshrate_limited(timing, 120)) ||
+		       (soc_resolution_limited(timing, 1440) && soc_freshrate_limited(timing, 144)) ||
 		       (soc_resolution_limited(timing, 1080) && soc_freshrate_limited(timing, 240));
 		break;
 	default:

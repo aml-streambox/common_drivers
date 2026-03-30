@@ -39,7 +39,15 @@ static void construct_avi_packet(struct hdmitx_dev *hdev)
 		info->colorimetry = HDMI_COLORIMETRY_ITU_601;
 	else
 		info->colorimetry = HDMI_COLORIMETRY_ITU_709;
-	info->picture_aspect = HDMI_PICTURE_ASPECT_16_9;
+	/* For standard 16:9 or 4:3 modes, set explicit aspect.
+	 * For non-standard (ultrawide, etc.), use "no data" per CTA-861
+	 * so the sink infers aspect from the active resolution. */
+	if (para->timing.h_pict == 16 && para->timing.v_pict == 9)
+		info->picture_aspect = HDMI_PICTURE_ASPECT_16_9;
+	else if (para->timing.h_pict == 4 && para->timing.v_pict == 3)
+		info->picture_aspect = HDMI_PICTURE_ASPECT_4_3;
+	else
+		info->picture_aspect = HDMI_PICTURE_ASPECT_NONE;
 	info->active_aspect = HDMI_ACTIVE_ASPECT_PICTURE;
 	info->itc = 0;
 	info->extended_colorimetry = HDMI_EXTENDED_COLORIMETRY_XV_YCC_601;

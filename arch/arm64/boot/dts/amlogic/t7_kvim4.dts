@@ -1770,7 +1770,7 @@
 	hdmi_repeater = <1>;
 	/* hdcp ctrl 0: sysctrl, 1: drv, 2: linux app */
 	hdcp_ctl_lvl = <1>;
-	max_refreshrate = <120>; /* SH-17689 DEBUG*/
+	max_refreshrate = <240>; /* SH-17689 DEBUG*/
 };
 
 /*if you want to use vdin just modify status to "ok"*/

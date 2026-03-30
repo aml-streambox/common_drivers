@@ -2136,13 +2136,28 @@ int vdin_v4l2_loopback_fmt(struct vdin_dev_s *devp)
 	else if (h >= 3840 - err_range && h <= 3840 + err_range &&
 			 v >= 2160 - err_range && v <= 2160 + err_range)
 		devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_3840_2160_00HZ;
-	else if (h >= 2560 - err_range && h <= 2560 + err_range &&
+	else if (h >= 3440 - err_range && h <= 3440 + err_range &&
 			 v >= 1440 - err_range && v <= 1440 + err_range)
-		devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_2560X1440_00HZ;
-	else if (h >= 1920 - err_range && h <= 1920 + err_range &&
+		devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_3440X1440P_60HZ;
+	else if (h >= 2560 - err_range && h <= 2560 + err_range &&
+			 v >= 1440 - err_range && v <= 1440 + err_range) {
+		/* 1440p with multiple refresh rates */
+		if (fps >= 130)
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_2560X1440P_144HZ;
+		else if (fps >= 110)
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_2560X1440P_120HZ;
+		else if (fps >= 50)
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_2560X1440P_60HZ;
+		else
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_2560X1440_00HZ;
+	} else if (h >= 1920 - err_range && h <= 1920 + err_range &&
 			 v >= 1080 - err_range && v <= 1080 + err_range) {
 		/* 1080p with multiple refresh rates */
-		if (fps >= 110)
+		if (fps >= 200)
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1920X1080P_240HZ;
+		else if (fps >= 130)
+			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1920X1080P_144HZ;
+		else if (fps >= 110)
 			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1920X1080P_120HZ;
 		else if (fps >= 90)
 			devp->parm.info.fmt = TVIN_SIG_FMT_HDMI_1920X1080P_100HZ;
