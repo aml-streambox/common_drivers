@@ -1210,8 +1210,23 @@ static void vdin_start_param_init(struct vdin_dev_s *devp)
 	if (!devp->debug.dbg_dv_hw5)
 		memset(&devp->dv_hw5, 0, sizeof(devp->dv_hw5));
 
+	/*
+	 * Re-sync runtime afbce_flag from dts_config.afbce_flag_cfg.
+	 * Note: afbce_flag_cfg is updated both at probe (from DTS) and
+	 * at runtime via sysfs "afbce_flag" command, so this always
+	 * reflects the latest intended value.
+	 */
 	devp->afbce_flag = devp->dts_config.afbce_flag_cfg;
-	//todo:more parameter initializations will be move here
+
+	/*
+	 * Safety: force double_wr off when AFBCE is disabled.
+	 * double_wr requires afbce_valid which requires afbce_flag,
+	 * so if afbce_flag is 0 then double_wr can never be useful.
+	 * This prevents stale double_wr_cfg from a previous session
+	 * or DTS default from causing unwanted 4x decimation.
+	 */
+	if (!devp->dts_config.afbce_flag_cfg)
+		devp->double_wr_cfg = 0;
 }
 
 /*
