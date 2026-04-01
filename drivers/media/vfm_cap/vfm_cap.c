@@ -1677,15 +1677,14 @@ static int vfm_cap_ioctl_get_dmabuf(struct vfm_cap_consumer *cons,
 	}
 
 	/*
-	 * Take an extra dma_buf reference for the fd.
-	 * dma_buf_fd() does NOT increment the dma_buf refcount;
-	 * the fd table holds its own file reference (via fget/fput
-	 * in the VFS layer). But we need to keep our buf->dbuf
-	 * pointer valid until buf_queue cleanup. The dma_buf_fd()
-	 * already associates the file with the dma_buf, so the
-	 * dma_buf won't be freed until the fd is closed AND our
-	 * buf->dbuf reference is put.
+	 * dma_buf_fd() consumes our dma_buf reference — the fd now
+	 * owns it. When userspace closes the fd, dma_buf refcount
+	 * drops to 0 and dma_buf is freed. But we still hold
+	 * buf->dbuf and will call dma_buf_put() on it in buf_queue
+	 * cleanup. Take an extra reference so both the fd and our
+	 * buf->dbuf each hold one independently.
 	 */
+	get_dma_buf(buf->dbuf);
 	buf->dbuf_fd = fd;
 	req->fd = fd;
 	req->size = buf->frame ? buf->frame->buf_size : 0;
