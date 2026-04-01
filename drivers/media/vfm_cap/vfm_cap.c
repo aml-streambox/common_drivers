@@ -97,6 +97,45 @@ static void frame_pool_init(struct vfm_cap_dev *dev)
 }
 
 /**
+ * frame_pool_recycle_all() - Recycle all in-use frames back to vdin0
+ *
+ * Must be called with ready_lock held.
+ * Properly returns all held vframes to upstream before pool reinit.
+ * Also clears prev_v4l2_frame (dropping its held reference).
+ */
+static void frame_pool_recycle_all(struct vfm_cap_dev *dev)
+{
+	int i;
+
+	/* Clear the held-back V4L2 frame pointer first — the loop below
+	 * will recycle the underlying vframe along with all others.
+	 * No need to decrement refcount separately since we're about to
+	 * force-reset all refcounts to 0. */
+	dev->prev_v4l2_frame = NULL;
+
+	for (i = 0; i < VFM_CAP_POOL_SIZE; i++) {
+		struct cap_frame *frame = &dev->frame_pool[i];
+
+		if (!frame->in_use)
+			continue;
+
+		if (frame->vf) {
+			vf_put(frame->vf, dev->recv_name);
+			vf_notify_provider(dev->recv_name,
+					   VFRAME_EVENT_RECEIVER_PUT, NULL);
+			frame->vf = NULL;
+		}
+		frame->in_use = false;
+		atomic_set(&frame->refcount, 0);
+		list_del_init(&frame->list);
+		list_del_init(&frame->pending_node);
+	}
+
+	INIT_LIST_HEAD(&dev->ready_list);
+	INIT_LIST_HEAD(&dev->pending_list);
+}
+
+/**
  * frame_pool_alloc() - Get a free cap_frame slot
  *
  * Must be called with ready_lock held.
@@ -550,7 +589,11 @@ static void vfm_cap_queue_source_change(struct vfm_cap_dev *dev, u32 changes)
  * vfm_cap_drain_pending() - Flush pending V4L2 frames during signal loss
  *
  * Called from sm_poll_work (process context) when signal goes unstable.
- * Removes all frames from pending_list and releases their V4L2 references.
+ * Removes all frames from pending_list and drops their V4L2 (held) refs.
+ *
+ * We do all refcount manipulation under ready_lock to avoid races with
+ * PROVIDER_RESET / frame_pool_recycle_all() which may run concurrently
+ * from ISR context and force-reset all refcounts.
  */
 static void vfm_cap_drain_pending(struct vfm_cap_dev *dev)
 {
@@ -567,13 +610,26 @@ static void vfm_cap_drain_pending(struct vfm_cap_dev *dev)
 			      &drain_list);
 		dev->prev_v4l2_frame = NULL;
 	}
-	spin_unlock_irqrestore(&dev->ready_lock, flags);
 
+	/*
+	 * Drop the V4L2/pending ref for each frame while still under lock.
+	 * This avoids a race with frame_pool_recycle_all() (called from ISR
+	 * context on PROVIDER_RESET) which force-resets all refcounts to 0.
+	 * If we dropped refs outside the lock, recycle_all could run between
+	 * the splice and the dec, corrupting the refcount.
+	 *
+	 * We inline the refcount-dec + conditional release here because
+	 * frame_put() takes ready_lock internally and would deadlock.
+	 */
 	list_for_each_entry_safe(frame, tmp, &drain_list, pending_node) {
 		list_del_init(&frame->pending_node);
-		frame_put(dev, frame);
+		if (atomic_dec_and_test(&frame->refcount)) {
+			/* Last ref — recycle vframe back to vdin0 */
+			frame_release(dev, frame);
+		}
 		count++;
 	}
+	spin_unlock_irqrestore(&dev->ready_lock, flags);
 
 	if (count > 0)
 		vfm_cap_dbg(1, "drained %d pending frames\n", count);
@@ -948,14 +1004,8 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 			     dev->prov_name);
 
 		spin_lock_irqsave(&dev->ready_lock, flags);
-		/* Release held-back V4L2 frame before pool reinit */
-		if (dev->prev_v4l2_frame) {
-			frame_release(dev, dev->prev_v4l2_frame);
-			dev->prev_v4l2_frame = NULL;
-		}
+		frame_pool_recycle_all(dev);
 		frame_pool_init(dev);
-		INIT_LIST_HEAD(&dev->ready_list);
-		INIT_LIST_HEAD(&dev->pending_list);
 		spin_unlock_irqrestore(&dev->ready_lock, flags);
 
 		if (vf_get_receiver(dev->prov_name)) {
@@ -981,14 +1031,8 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 
 		/* Flush the frame pool - release any held frames */
 		spin_lock_irqsave(&dev->ready_lock, flags);
-		/* Release held-back V4L2 frame before pool reinit */
-		if (dev->prev_v4l2_frame) {
-			frame_release(dev, dev->prev_v4l2_frame);
-			dev->prev_v4l2_frame = NULL;
-		}
+		frame_pool_recycle_all(dev);
 		frame_pool_init(dev);
-		INIT_LIST_HEAD(&dev->ready_list);
-		INIT_LIST_HEAD(&dev->pending_list);
 		spin_unlock_irqrestore(&dev->ready_lock, flags);
 
 		dev->vfm_started = false;
@@ -1087,14 +1131,8 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 			vfm_cap_info("late start: provider not registered, self-registering\n");
 
 			spin_lock_irqsave(&dev->ready_lock, pflags);
-			/* Release held-back V4L2 frame before pool reinit */
-			if (dev->prev_v4l2_frame) {
-				frame_release(dev, dev->prev_v4l2_frame);
-				dev->prev_v4l2_frame = NULL;
-			}
+			frame_pool_recycle_all(dev);
 			frame_pool_init(dev);
-			INIT_LIST_HEAD(&dev->ready_list);
-			INIT_LIST_HEAD(&dev->pending_list);
 			spin_unlock_irqrestore(&dev->ready_lock, pflags);
 
 			if (vf_get_receiver(dev->prov_name)) {
@@ -1260,14 +1298,8 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		vfm_cap_info("PROVIDER_RESET\n");
 
 		spin_lock_irqsave(&dev->ready_lock, flags);
-		/* Release held-back V4L2 frame before pool reinit */
-		if (dev->prev_v4l2_frame) {
-			frame_release(dev, dev->prev_v4l2_frame);
-			dev->prev_v4l2_frame = NULL;
-		}
+		frame_pool_recycle_all(dev);
 		frame_pool_init(dev);
-		INIT_LIST_HEAD(&dev->ready_list);
-		INIT_LIST_HEAD(&dev->pending_list);
 		spin_unlock_irqrestore(&dev->ready_lock, flags);
 
 		/* Forward reset downstream */
@@ -1854,44 +1886,14 @@ static int vfm_cap_release(struct file *file)
 	 * vdin0 write-buffer exhaustion (the "freeze after first run" bug).
 	 */
 	if (dev->num_consumers == 0) {
-		int i, drained = 0;
-
 		/* Cancel pending delivery — no consumers to deliver to */
 		cancel_work_sync(&dev->deliver_work);
 
 		spin_lock_irqsave(&dev->ready_lock, flags);
-		/* Clear held-back frame — pool force-drain handles it */
-		dev->prev_v4l2_frame = NULL;
-		for (i = 0; i < VFM_CAP_POOL_SIZE; i++) {
-			struct cap_frame *frame = &dev->frame_pool[i];
-
-			if (!frame->in_use)
-				continue;
-
-			vfm_cap_info("auto-drain slot %d: refcount=%d vf_idx=%u\n",
-				     i, atomic_read(&frame->refcount),
-				     frame->vf ? frame->vf->index : 0xFFFF);
-
-			if (frame->vf) {
-				vf_put(frame->vf, dev->recv_name);
-				vf_notify_provider(dev->recv_name,
-						   VFRAME_EVENT_RECEIVER_PUT,
-						   NULL);
-				frame->vf = NULL;
-			}
-			frame->in_use = false;
-			atomic_set(&frame->refcount, 0);
-			list_del_init(&frame->list);
-			list_del_init(&frame->pending_node);
-			drained++;
-		}
-		INIT_LIST_HEAD(&dev->ready_list);
-		INIT_LIST_HEAD(&dev->pending_list);
+		frame_pool_recycle_all(dev);
 		spin_unlock_irqrestore(&dev->ready_lock, flags);
 
-		if (drained)
-			vfm_cap_info("auto-drain: recycled %d frames to vdin0\n",
-				     drained);
+		vfm_cap_info("auto-drain: recycled all frames to vdin0\n");
 	}
 
 	kfree(cons);
@@ -2068,7 +2070,6 @@ static ssize_t pool_drain_store(struct device *device,
 {
 	struct vfm_cap_dev *dev = g_vfm_cap_dev;
 	unsigned long flags;
-	int i, drained = 0;
 
 	if (!dev)
 		return -ENODEV;
@@ -2079,35 +2080,10 @@ static ssize_t pool_drain_store(struct device *device,
 	cancel_work_sync(&dev->deliver_work);
 
 	spin_lock_irqsave(&dev->ready_lock, flags);
-	/* Clear held-back frame — pool force-drain handles it */
-	dev->prev_v4l2_frame = NULL;
-	for (i = 0; i < VFM_CAP_POOL_SIZE; i++) {
-		struct cap_frame *frame = &dev->frame_pool[i];
-
-		if (frame->in_use) {
-			vfm_cap_info("  drain slot %d: refcount=%d vf_idx=%u\n",
-				     i, atomic_read(&frame->refcount),
-				     frame->vf ? frame->vf->index : 0xFFFF);
-			/* Force-release: recycle vframe to vdin0 */
-			if (frame->vf) {
-				vf_put(frame->vf, dev->recv_name);
-				vf_notify_provider(dev->recv_name,
-						   VFRAME_EVENT_RECEIVER_PUT,
-						   NULL);
-				frame->vf = NULL;
-			}
-			frame->in_use = false;
-			atomic_set(&frame->refcount, 0);
-			list_del_init(&frame->list);
-			list_del_init(&frame->pending_node);
-			drained++;
-		}
-	}
-	INIT_LIST_HEAD(&dev->ready_list);
-	INIT_LIST_HEAD(&dev->pending_list);
+	frame_pool_recycle_all(dev);
 	spin_unlock_irqrestore(&dev->ready_lock, flags);
 
-	vfm_cap_info("FORCE DRAIN: released %d frames\n", drained);
+	vfm_cap_info("FORCE DRAIN: complete\n");
 	return count;
 }
 static DEVICE_ATTR_WO(pool_drain);
@@ -2310,12 +2286,21 @@ static void __exit vfm_cap_exit(void)
 		dev->vfm_started = false;
 	}
 
+	/*
+	 * Flush frame pool BEFORE unregistering VFM receiver, so that
+	 * vf_put() calls inside frame_pool_recycle_all() go through
+	 * the still-registered receiver path.
+	 */
+	{
+		unsigned long flags;
+
+		spin_lock_irqsave(&dev->ready_lock, flags);
+		frame_pool_recycle_all(dev);
+		spin_unlock_irqrestore(&dev->ready_lock, flags);
+	}
+
 	/* Unregister VFM receiver */
 	vf_unreg_receiver(&dev->vf_recv);
-
-	/* Flush frame pool (and held-back V4L2 frame) */
-	dev->prev_v4l2_frame = NULL;
-	frame_pool_init(dev);
 
 	/* Unregister V4L2 */
 	video_unregister_device(&dev->vdev);
