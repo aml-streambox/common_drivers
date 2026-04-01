@@ -315,6 +315,23 @@ struct vfm_cap_dev {
 	/* Work for deferred frame delivery (not safe in ISR context) */
 	struct work_struct		deliver_work;
 
+	/*
+	 * One-frame delay for V4L2/DMA-buf consumers (tearing fix).
+	 *
+	 * In VRR low-latency mode, vdin0 fires VFRAME_READY while still
+	 * writing to the CMA buffer (~200 scanlines behind at 4K).
+	 * If the GPU reads immediately via DMA-buf, it sees a tear.
+	 *
+	 * Fix: hold back the current frame and deliver the PREVIOUS one
+	 * to V4L2 consumers. By the time we receive frame N+1, frame N
+	 * is guaranteed to be fully written. The display path (ready_list)
+	 * still gets the latest frame immediately — VPP handles its own
+	 * phase offset.
+	 *
+	 * Protected by ready_lock (set/read in ISR context).
+	 */
+	struct cap_frame			*prev_v4l2_frame;
+
 	/* Platform device (for DMA alloc) */
 	struct platform_device		*pdev;
 };

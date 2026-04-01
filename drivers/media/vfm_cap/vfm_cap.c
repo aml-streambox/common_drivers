@@ -561,6 +561,12 @@ static void vfm_cap_drain_pending(struct vfm_cap_dev *dev)
 
 	spin_lock_irqsave(&dev->ready_lock, flags);
 	list_splice_init(&dev->pending_list, &drain_list);
+	/* Also release the held-back frame — signal is lost/unstable */
+	if (dev->prev_v4l2_frame) {
+		list_add_tail(&dev->prev_v4l2_frame->pending_node,
+			      &drain_list);
+		dev->prev_v4l2_frame = NULL;
+	}
 	spin_unlock_irqrestore(&dev->ready_lock, flags);
 
 	list_for_each_entry_safe(frame, tmp, &drain_list, pending_node) {
@@ -942,6 +948,11 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 			     dev->prov_name);
 
 		spin_lock_irqsave(&dev->ready_lock, flags);
+		/* Release held-back V4L2 frame before pool reinit */
+		if (dev->prev_v4l2_frame) {
+			frame_release(dev, dev->prev_v4l2_frame);
+			dev->prev_v4l2_frame = NULL;
+		}
 		frame_pool_init(dev);
 		INIT_LIST_HEAD(&dev->ready_list);
 		INIT_LIST_HEAD(&dev->pending_list);
@@ -970,6 +981,11 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 
 		/* Flush the frame pool - release any held frames */
 		spin_lock_irqsave(&dev->ready_lock, flags);
+		/* Release held-back V4L2 frame before pool reinit */
+		if (dev->prev_v4l2_frame) {
+			frame_release(dev, dev->prev_v4l2_frame);
+			dev->prev_v4l2_frame = NULL;
+		}
 		frame_pool_init(dev);
 		INIT_LIST_HEAD(&dev->ready_list);
 		INIT_LIST_HEAD(&dev->pending_list);
@@ -1071,6 +1087,11 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 			vfm_cap_info("late start: provider not registered, self-registering\n");
 
 			spin_lock_irqsave(&dev->ready_lock, pflags);
+			/* Release held-back V4L2 frame before pool reinit */
+			if (dev->prev_v4l2_frame) {
+				frame_release(dev, dev->prev_v4l2_frame);
+				dev->prev_v4l2_frame = NULL;
+			}
 			frame_pool_init(dev);
 			INIT_LIST_HEAD(&dev->ready_list);
 			INIT_LIST_HEAD(&dev->pending_list);
@@ -1169,23 +1190,58 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		/*
 		 * Set refcount:
 		 *   1 = display path (downstream will get/put)
-		 *  +1 = V4L2 delivery work (if consumers streaming and not draining)
+		 *
+		 * The V4L2 reference (+1) is NOT set on the current frame.
+		 * Instead, we use a one-frame delay: the PREVIOUS frame
+		 * (prev_v4l2_frame) is delivered to V4L2 consumers.
+		 * This ensures V4L2/DMA-buf consumers only see fully-written
+		 * frames, eliminating tearing from vdin0's VRR write phase.
 		 *
 		 * Additional refs are taken by vfm_cap_export_frame_dmabuf()
 		 * when the consumer requests DMA-buf fds.
 		 */
-		if (want_v4l2)
-			atomic_set(&frame->refcount, 2);
-		else
-			atomic_set(&frame->refcount, 1);
+		atomic_set(&frame->refcount, 1);
 
 		/* Add to ready list for downstream to pick up */
 		list_add_tail(&frame->list, &dev->ready_list);
 
-		/* Add to pending list for V4L2 delivery if needed */
-		if (want_v4l2)
-			list_add_tail(&frame->pending_node,
-				      &dev->pending_list);
+		/*
+		 * One-frame delay for V4L2 delivery (tearing fix):
+		 *
+		 * Instead of delivering the current frame (which may still
+		 * be under active DMA write by vdin0), we deliver the
+		 * PREVIOUS frame which is guaranteed complete.
+		 *
+		 * Flow:
+		 *   Frame N arrives:
+		 *     - prev_v4l2_frame (frame N-1) -> pending_list (deliver)
+		 *     - current frame N -> saved as new prev_v4l2_frame
+		 *   Frame N+1 arrives:
+		 *     - prev_v4l2_frame (frame N) -> pending_list (deliver)
+		 *     - current frame N+1 -> saved as new prev_v4l2_frame
+		 *
+		 * The first frame after start has no previous, so it's held
+		 * and delivered when the second frame arrives (one-frame
+		 * startup latency, acceptable for streaming).
+		 */
+		if (want_v4l2) {
+			struct cap_frame *prev = dev->prev_v4l2_frame;
+
+			/* Bump refcount on current frame for the held ref */
+			atomic_inc(&frame->refcount);
+			dev->prev_v4l2_frame = frame;
+
+			if (prev) {
+				/*
+				 * Previous frame is fully written — deliver it.
+				 * Its refcount was bumped when it was saved as
+				 * prev_v4l2_frame; that ref now transfers to
+				 * the pending_list.
+				 */
+				list_add_tail(&prev->pending_node,
+					      &dev->pending_list);
+			}
+		}
 
 		spin_unlock_irqrestore(&dev->ready_lock, flags);
 
@@ -1193,8 +1249,8 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		vf_notify_receiver(dev->prov_name,
 				   VFRAME_EVENT_PROVIDER_VFRAME_READY, NULL);
 
-		/* Schedule V4L2 delivery work (zero-copy DMA-buf export) */
-		if (want_v4l2)
+		/* Schedule V4L2 delivery work if we queued a previous frame */
+		if (want_v4l2 && !list_empty(&dev->pending_list))
 			schedule_work(&dev->deliver_work);
 
 		/* Wake up any polling consumers */
@@ -1204,6 +1260,11 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		vfm_cap_info("PROVIDER_RESET\n");
 
 		spin_lock_irqsave(&dev->ready_lock, flags);
+		/* Release held-back V4L2 frame before pool reinit */
+		if (dev->prev_v4l2_frame) {
+			frame_release(dev, dev->prev_v4l2_frame);
+			dev->prev_v4l2_frame = NULL;
+		}
 		frame_pool_init(dev);
 		INIT_LIST_HEAD(&dev->ready_list);
 		INIT_LIST_HEAD(&dev->pending_list);
@@ -1799,6 +1860,8 @@ static int vfm_cap_release(struct file *file)
 		cancel_work_sync(&dev->deliver_work);
 
 		spin_lock_irqsave(&dev->ready_lock, flags);
+		/* Clear held-back frame — pool force-drain handles it */
+		dev->prev_v4l2_frame = NULL;
 		for (i = 0; i < VFM_CAP_POOL_SIZE; i++) {
 			struct cap_frame *frame = &dev->frame_pool[i];
 
@@ -2016,6 +2079,8 @@ static ssize_t pool_drain_store(struct device *device,
 	cancel_work_sync(&dev->deliver_work);
 
 	spin_lock_irqsave(&dev->ready_lock, flags);
+	/* Clear held-back frame — pool force-drain handles it */
+	dev->prev_v4l2_frame = NULL;
 	for (i = 0; i < VFM_CAP_POOL_SIZE; i++) {
 		struct cap_frame *frame = &dev->frame_pool[i];
 
@@ -2131,6 +2196,7 @@ static int __init vfm_cap_init(void)
 	dev->sm_polling = false;
 	dev->draining = false;
 	dev->last_signal_type = 0;
+	dev->prev_v4l2_frame = NULL;
 	memset(&dev->sig_info, 0, sizeof(dev->sig_info));
 
 	/* Initialize frame pool */
@@ -2247,7 +2313,8 @@ static void __exit vfm_cap_exit(void)
 	/* Unregister VFM receiver */
 	vf_unreg_receiver(&dev->vf_recv);
 
-	/* Flush frame pool */
+	/* Flush frame pool (and held-back V4L2 frame) */
+	dev->prev_v4l2_frame = NULL;
 	frame_pool_init(dev);
 
 	/* Unregister V4L2 */

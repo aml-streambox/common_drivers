@@ -3751,8 +3751,25 @@ irqreturn_t vdin_isr(int irq, void *dev_id)
 						   NULL);
 		}
 	} else if (devp->game_mode & VDIN_GAME_MODE_2) {
-		/* game mode 2 */
-		vdin_vframe_put_and_recycle(devp, next_wr_vfe, put_md);
+		/*
+		 * Game mode 2 with buffer rotation:
+		 *
+		 * Deliver curr_wr_vfe (the buffer vdin is writing to NOW)
+		 * instead of next_wr_vfe (the buffer vdin will write NEXT).
+		 *
+		 * With one-buffer mode disabled (dbg_force_one_buffer=2),
+		 * each buffer has a unique physical address. Delivering
+		 * next_wr_vfe would give downstream a buffer with stale
+		 * data (not yet written by vdin). Delivering curr_wr_vfe
+		 * gives VPP the freshest data for zero-latency display
+		 * (same race as one-buffer mode, handled by line_dly).
+		 *
+		 * For capture (vfm_cap), the one-frame delay means V4L2
+		 * consumers receive the PREVIOUS curr_wr_vfe — a buffer
+		 * vdin has finished writing and moved on from. This
+		 * eliminates capture tearing entirely.
+		 */
+		vdin_vframe_put_and_recycle(devp, curr_wr_vfe, put_md);
 	}
 
 	devp->frame_cnt++;
@@ -6754,8 +6771,14 @@ static int vdin_drv_probe(struct platform_device *pdev)
 	devp->vdin_dev_ssize = sizeof(struct vdin_dev_s);
 	devp->canvas_config_mode = canvas_config_mode;
 	devp->dv.dv_config = false;
-	/* Game mode 2 use one buffer by default */
-	devp->dbg_force_one_buffer = 1;
+	/* Game mode 2: disable one-buffer mode by default to enable
+	 * buffer rotation for tear-free capture. Each vdin buffer keeps
+	 * its own unique physical address. VPP display still gets zero
+	 * latency via line_dly, and capture consumers (vfm_cap) get
+	 * fully-written frames via the one-frame delay.
+	 * 0:auto, 1:force one-buffer on, 2:force one-buffer off
+	 */
+	devp->dbg_force_one_buffer = 2;
 	if (!devp->index)
 		devp->vdin_drop_num = VDIN_DROP_FRAME_NUM_DEF;
 	else
