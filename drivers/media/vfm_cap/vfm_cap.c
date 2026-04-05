@@ -1164,9 +1164,18 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		 * (no SM transition, just format change within stable signal),
 		 * queue SOURCE_CHANGE. This is safe from ISR context because
 		 * v4l2_event_queue() uses spin_lock_irqsave internally.
+		 *
+		 * Flush the frame pool to prevent "unknown vframe idx" errors
+		 * when resolution changes. Old frames from previous resolution
+		 * cannot be matched when downstream returns them.
 		 */
 		if (fmt_changed) {
 			unsigned long eflags;
+
+			/* Recycle all frames from pool - they have old format */
+			spin_lock_irqsave(&dev->ready_lock, eflags);
+			frame_pool_recycle_all(dev);
+			spin_unlock_irqrestore(&dev->ready_lock, eflags);
 
 			spin_lock_irqsave(&dev->fmt_spin, eflags);
 			vfm_cap_build_signal_info(dev, &dev->sig_info,
