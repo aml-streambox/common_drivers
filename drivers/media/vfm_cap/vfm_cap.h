@@ -263,6 +263,7 @@ struct vfm_cap_dev {
 	char				recv_name[VFM_CAP_NAME_SIZE];
 	char				prov_name[VFM_CAP_NAME_SIZE];
 	bool				vfm_started;
+	bool				standalone; /* headless: no downstream receiver */
 
 	/* Frame pool */
 	struct cap_frame		frame_pool[VFM_CAP_POOL_SIZE];

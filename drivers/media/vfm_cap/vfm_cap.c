@@ -999,32 +999,72 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		 * Upstream says "start streaming". Register our provider
 		 * to connect to downstream (deinterlace).
 		 * This follows the amlvideo.c pattern exactly.
+		 *
+		 * Standalone mode: if no downstream receiver exists in
+		 * the VFM chain (headless: path is "vdin0 vfm_cap" only),
+		 * skip provider registration entirely. Frames will be
+		 * managed purely for V4L2 consumers.
+		 *
+		 * If we previously registered as a provider (from a prior
+		 * PROVIDER_START with a different VFM path), unregister
+		 * first to avoid duplicate-name errors in vf_reg_provider().
 		 */
-		vfm_cap_info("PROVIDER_START: registering provider '%s'\n",
-			     dev->prov_name);
+		vfm_cap_info("PROVIDER_START: checking downstream for '%s' "
+			     "(was standalone=%d, vfm_started=%d)\n",
+			     dev->prov_name, dev->standalone,
+			     dev->vfm_started);
+
+		/* Clean up stale provider registration from previous path */
+		if (dev->vfm_started && !dev->standalone) {
+			vfm_cap_info("PROVIDER_START: unreg stale provider "
+				     "before re-evaluation\n");
+			vf_unreg_provider(&dev->vf_prov);
+		}
 
 		spin_lock_irqsave(&dev->ready_lock, flags);
 		frame_pool_recycle_all(dev);
 		frame_pool_init(dev);
+		dev->prev_v4l2_frame = NULL;
 		spin_unlock_irqrestore(&dev->ready_lock, flags);
 
 		if (vf_get_receiver(dev->prov_name)) {
+			dev->standalone = false;
+			vfm_cap_info("TEE mode: downstream receiver found\n");
 			vf_provider_init(&dev->vf_prov, dev->prov_name,
 					 &vfm_cap_vf_provider_ops, dev);
 			vf_reg_provider(&dev->vf_prov);
 			vf_notify_receiver(dev->prov_name,
 					   VFRAME_EVENT_PROVIDER_START, NULL);
+		} else {
+			dev->standalone = true;
+			vfm_cap_info("STANDALONE mode: no downstream receiver, "
+				     "frames managed for V4L2 only\n");
 		}
 		dev->vfm_started = true;
 
 	} else if (type == VFRAME_EVENT_PROVIDER_UNREG) {
 		/*
 		 * Upstream is going away. Unregister our provider.
+		 *
+		 * NOTE: We must NOT rely on vf_get_receiver() here because
+		 * the VFM map entry may already be removed by the time this
+		 * event fires (e.g. when tvpath is removed then re-added
+		 * with a different chain). If the map is gone,
+		 * vf_get_receiver() returns NULL and we'd skip the unreg,
+		 * leaving a stale provider registration that blocks future
+		 * vf_reg_provider() calls (duplicate name check).
+		 *
+		 * Instead, unconditionally unregister if we registered
+		 * (i.e. vfm_started && !standalone).
 		 */
-		vfm_cap_info("PROVIDER_UNREG: unregistering provider\n");
+		vfm_cap_info("PROVIDER_UNREG: unregistering provider "
+			     "(standalone=%d)\n", dev->standalone);
 
-		if (vf_get_receiver(dev->prov_name))
+		if (!dev->standalone) {
+			vfm_cap_info("PROVIDER_UNREG: unreg provider '%s'\n",
+				     dev->prov_name);
 			vf_unreg_provider(&dev->vf_prov);
+		}
 
 		/* Cancel any pending V4L2 delivery work */
 		cancel_work_sync(&dev->deliver_work);
@@ -1035,6 +1075,7 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		frame_pool_init(dev);
 		spin_unlock_irqrestore(&dev->ready_lock, flags);
 
+		dev->prev_v4l2_frame = NULL;
 		dev->vfm_started = false;
 
 	} else if (type == VFRAME_EVENT_PROVIDER_REG) {
@@ -1070,12 +1111,14 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		if (states.buf_avail_num > 0 || pool_free > 0)
 			return RECEIVER_ACTIVE;
 
-		/* Also check downstream */
-		downstream_state = vf_notify_receiver(dev->prov_name,
-				       VFRAME_EVENT_PROVIDER_QUREY_STATE,
-				       NULL);
-		if (downstream_state == RECEIVER_ACTIVE)
-			return RECEIVER_ACTIVE;
+		/* Also check downstream (tee mode only) */
+		if (!dev->standalone) {
+			downstream_state = vf_notify_receiver(dev->prov_name,
+					       VFRAME_EVENT_PROVIDER_QUREY_STATE,
+					       NULL);
+			if (downstream_state == RECEIVER_ACTIVE)
+				return RECEIVER_ACTIVE;
+		}
 
 		/*
 		 * We're returning INACTIVE: pool is 100% exhausted and
@@ -1124,18 +1167,26 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		 * we never received VFRAME_EVENT_PROVIDER_START.
 		 * Detect this and self-register the VFM provider so
 		 * frames can flow through the tee to downstream.
+		 *
+		 * Standalone mode: skip provider registration (no downstream).
 		 */
 		if (!dev->vfm_started) {
 			unsigned long pflags;
 
-			vfm_cap_info("late start: provider not registered, self-registering\n");
+			vfm_cap_info("late start: provider not registered, "
+				     "self-registering (standalone=%d)\n",
+				     dev->standalone);
 
 			spin_lock_irqsave(&dev->ready_lock, pflags);
 			frame_pool_recycle_all(dev);
 			frame_pool_init(dev);
+			dev->prev_v4l2_frame = NULL;
 			spin_unlock_irqrestore(&dev->ready_lock, pflags);
 
 			if (vf_get_receiver(dev->prov_name)) {
+				dev->standalone = false;
+				vfm_cap_info("late start: TEE mode "
+					     "(downstream found)\n");
 				vf_provider_init(&dev->vf_prov,
 						 dev->prov_name,
 						 &vfm_cap_vf_provider_ops,
@@ -1144,6 +1195,10 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 				vf_notify_receiver(dev->prov_name,
 					VFRAME_EVENT_PROVIDER_START,
 					NULL);
+			} else {
+				dev->standalone = true;
+				vfm_cap_info("late start: STANDALONE mode "
+					     "(no downstream)\n");
 			}
 			dev->vfm_started = true;
 		}
@@ -1235,8 +1290,13 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		frame->buf_size = dev->sizeimage[0];
 
 		/*
-		 * Set refcount:
-		 *   1 = display path (downstream will get/put)
+		 * Set refcount and manage frame ownership.
+		 *
+		 * Standalone mode: no display path, so no base refcount of 1.
+		 * Frames are managed purely for V4L2. If no V4L2 consumers
+		 * are streaming, recycle immediately.
+		 *
+		 * Tee mode: display path gets base refcount of 1.
 		 *
 		 * The V4L2 reference (+1) is NOT set on the current frame.
 		 * Instead, we use a one-frame delay: the PREVIOUS frame
@@ -1247,54 +1307,96 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		 * Additional refs are taken by vfm_cap_export_frame_dmabuf()
 		 * when the consumer requests DMA-buf fds.
 		 */
-		atomic_set(&frame->refcount, 1);
+		if (dev->standalone) {
+			/*
+			 * Standalone: no downstream display path.
+			 * Refcount is purely for V4L2 consumers.
+			 */
+			if (want_v4l2) {
+				struct cap_frame *prev = dev->prev_v4l2_frame;
 
-		/* Add to ready list for downstream to pick up */
-		list_add_tail(&frame->list, &dev->ready_list);
+				/* refcount=1 for the held V4L2 ref */
+				atomic_set(&frame->refcount, 1);
+				dev->prev_v4l2_frame = frame;
 
-		/*
-		 * One-frame delay for V4L2 delivery (tearing fix):
-		 *
-		 * Instead of delivering the current frame (which may still
-		 * be under active DMA write by vdin0), we deliver the
-		 * PREVIOUS frame which is guaranteed complete.
-		 *
-		 * Flow:
-		 *   Frame N arrives:
-		 *     - prev_v4l2_frame (frame N-1) -> pending_list (deliver)
-		 *     - current frame N -> saved as new prev_v4l2_frame
-		 *   Frame N+1 arrives:
-		 *     - prev_v4l2_frame (frame N) -> pending_list (deliver)
-		 *     - current frame N+1 -> saved as new prev_v4l2_frame
-		 *
-		 * The first frame after start has no previous, so it's held
-		 * and delivered when the second frame arrives (one-frame
-		 * startup latency, acceptable for streaming).
-		 */
-		if (want_v4l2) {
-			struct cap_frame *prev = dev->prev_v4l2_frame;
-
-			/* Bump refcount on current frame for the held ref */
-			atomic_inc(&frame->refcount);
-			dev->prev_v4l2_frame = frame;
-
-			if (prev) {
+				if (prev) {
+					/*
+					 * Previous frame fully written.
+					 * Its refcount was set to 1 when held;
+					 * that ref transfers to pending_list.
+					 */
+					list_add_tail(&prev->pending_node,
+						      &dev->pending_list);
+				}
+			} else {
 				/*
-				 * Previous frame is fully written — deliver it.
-				 * Its refcount was bumped when it was saved as
-				 * prev_v4l2_frame; that ref now transfers to
-				 * the pending_list.
+				 * No V4L2 consumers: recycle immediately.
+				 * Don't add to any list — just put back.
 				 */
-				list_add_tail(&prev->pending_node,
-					      &dev->pending_list);
+				frame->in_use = false;
+				spin_unlock_irqrestore(&dev->ready_lock,
+						       flags);
+				vf_put(vf, dev->recv_name);
+				vf_notify_provider(dev->recv_name,
+					VFRAME_EVENT_RECEIVER_PUT, NULL);
+				frame->vf = NULL;
+				/* Wake pollers, schedule work if pending */
+				if (!list_empty(&dev->pending_list))
+					schedule_work(&dev->deliver_work);
+				wake_up_interruptible(&dev->wq);
+				return 0;
+			}
+		} else {
+			/*
+			 * Tee mode: display path gets base refcount of 1.
+			 */
+			atomic_set(&frame->refcount, 1);
+
+			/* Add to ready list for downstream to pick up */
+			list_add_tail(&frame->list, &dev->ready_list);
+
+			/*
+			 * One-frame delay for V4L2 delivery (tearing fix):
+			 *
+			 * Instead of delivering the current frame (which may
+			 * still be under active DMA write by vdin0), we
+			 * deliver the PREVIOUS frame which is guaranteed
+			 * complete.
+			 *
+			 * Flow:
+			 *   Frame N arrives:
+			 *     - prev_v4l2_frame (N-1) -> pending_list
+			 *     - current frame N -> saved as prev_v4l2_frame
+			 *   Frame N+1 arrives:
+			 *     - prev_v4l2_frame (N) -> pending_list
+			 *     - current frame N+1 -> saved as prev_v4l2_frame
+			 *
+			 * The first frame after start has no previous, so
+			 * it's held and delivered when the second frame
+			 * arrives (one-frame startup latency, acceptable
+			 * for streaming).
+			 */
+			if (want_v4l2) {
+				struct cap_frame *prev = dev->prev_v4l2_frame;
+
+				/* Bump refcount for the held ref */
+				atomic_inc(&frame->refcount);
+				dev->prev_v4l2_frame = frame;
+
+				if (prev) {
+					list_add_tail(&prev->pending_node,
+						      &dev->pending_list);
+				}
 			}
 		}
 
 		spin_unlock_irqrestore(&dev->ready_lock, flags);
 
-		/* Notify downstream that a frame is ready */
-		vf_notify_receiver(dev->prov_name,
-				   VFRAME_EVENT_PROVIDER_VFRAME_READY, NULL);
+		/* Notify downstream that a frame is ready (tee mode only) */
+		if (!dev->standalone)
+			vf_notify_receiver(dev->prov_name,
+					   VFRAME_EVENT_PROVIDER_VFRAME_READY,
+					   NULL);
 
 		/* Schedule V4L2 delivery work if we queued a previous frame */
 		if (want_v4l2 && !list_empty(&dev->pending_list))
@@ -1311,17 +1413,21 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		frame_pool_init(dev);
 		spin_unlock_irqrestore(&dev->ready_lock, flags);
 
-		/* Forward reset downstream */
-		vf_notify_receiver(dev->prov_name,
-				   VFRAME_EVENT_PROVIDER_RESET, data);
+		/* Forward reset downstream (tee mode only) */
+		if (!dev->standalone)
+			vf_notify_receiver(dev->prov_name,
+					   VFRAME_EVENT_PROVIDER_RESET, data);
 
 	} else if (type == VFRAME_EVENT_PROVIDER_FR_HINT) {
-		/* Pass through frame rate hint */
-		vf_notify_receiver(dev->prov_name,
-				   VFRAME_EVENT_PROVIDER_FR_HINT, data);
+		/* Pass through frame rate hint (tee mode only) */
+		if (!dev->standalone)
+			vf_notify_receiver(dev->prov_name,
+					   VFRAME_EVENT_PROVIDER_FR_HINT, data);
 	} else if (type == VFRAME_EVENT_PROVIDER_FR_END_HINT) {
-		vf_notify_receiver(dev->prov_name,
-				   VFRAME_EVENT_PROVIDER_FR_END_HINT, data);
+		if (!dev->standalone)
+			vf_notify_receiver(dev->prov_name,
+					   VFRAME_EVENT_PROVIDER_FR_END_HINT,
+					   data);
 	}
 
 	return 0;
@@ -2179,6 +2285,7 @@ static int __init vfm_cap_init(void)
 	dev->sm_state = VFM_SM_NULL;
 	dev->sm_polling = false;
 	dev->draining = false;
+	dev->standalone = false;
 	dev->last_signal_type = 0;
 	dev->prev_v4l2_frame = NULL;
 	memset(&dev->sig_info, 0, sizeof(dev->sig_info));
@@ -2288,8 +2395,8 @@ static void __exit vfm_cap_exit(void)
 	/* Cancel pending V4L2 delivery work */
 	cancel_work_sync(&dev->deliver_work);
 
-	/* Unregister VFM provider if active */
-	if (dev->vfm_started) {
+	/* Unregister VFM provider if active (not in standalone mode) */
+	if (dev->vfm_started && !dev->standalone) {
 		vf_unreg_provider(&dev->vf_prov);
 		dev->vfm_started = false;
 	}
