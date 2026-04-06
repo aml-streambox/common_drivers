@@ -657,38 +657,32 @@
 			};
 		};
 
-		aml-audio-card,dai-link@2 {
-			format = "dsp_a";
-			mclk-fs = <64>;
-			continuous-clock;
-			//bitclock-inversion;
-			//frame-inversion;
-			/* master mode */
-			bitclock-master = <&tdma>;
-			frame-master = <&tdma>;
-			/* slave mode */
-			/*
-			 * bitclock-master = <&tdmacodec>;
-			 * frame-master = <&tdmacodec>;
-			 */
-			/* suffix-name, sync with android audio hal used for */
-			suffix-name = "alsaPORT-pcm";
-			tdmacpu: cpu {
-				sound-dai = <&tdma>;
-				dai-tdm-slot-tx-mask =
-							<1>;
-				dai-tdm-slot-rx-mask =
-							<1>;
-				dai-tdm-slot-num = <2>;
-				dai-tdm-slot-width = <16>;
-				system-clock-frequency = <512000>;
-			};
-			tdmacodec: codec {
-				sound-dai = <&dummy_codec>;
-			};
-		};
+		/*
+		 * TDM-A dai-link commented out to align hw:0,2
+		 * with TDM-C (HDMI RX), matching TVPro layout.
+		 *
+		 * aml-audio-card,dai-link@2 {
+		 *	format = "dsp_a";
+		 *	mclk-fs = <64>;
+		 *	continuous-clock;
+		 *	bitclock-master = <&tdma>;
+		 *	frame-master = <&tdma>;
+		 *	suffix-name = "alsaPORT-pcm";
+		 *	tdmacpu: cpu {
+		 *		sound-dai = <&tdma>;
+		 *		dai-tdm-slot-tx-mask = <1>;
+		 *		dai-tdm-slot-rx-mask = <1>;
+		 *		dai-tdm-slot-num = <2>;
+		 *		dai-tdm-slot-width = <16>;
+		 *		system-clock-frequency = <512000>;
+		 *	};
+		 *	tdmacodec: codec {
+		 *		sound-dai = <&dummy_codec>;
+		 *	};
+		 * };
+		 */
 
-		aml-audio-card,dai-link@3 {
+		aml-audio-card,dai-link@2 {
 			format = "i2s";
 			mclk-fs = <256>;
 			//continuous-clock;
@@ -715,7 +709,7 @@
 			};
 		};
 
-		aml-audio-card,dai-link@4 {
+		aml-audio-card,dai-link@3 {
 			mclk-fs = <64>;
 			/* suffix-name, sync with android audio hal used for */
 			suffix-name = "alsaPORT-pdm-builtinmic";
@@ -727,7 +721,7 @@
 			};
 		};
 
-		aml-audio-card,dai-link@5 {
+		aml-audio-card,dai-link@4 {
 			mclk-fs = <128>;
 			suffix-name = "alsaPORT-spdifb";
 			cpu {
@@ -739,7 +733,7 @@
 			};
 		};
 
-		aml-audio-card,dai-link@6 {
+		aml-audio-card,dai-link@5 {
 			mclk-fs = <256>;
 			suffix-name = "alsaPORT-tv";
 			cpu {
@@ -751,7 +745,7 @@
 			};
 		};
 
-		aml-audio-card,dai-link@7 {
+		aml-audio-card,dai-link@6 {
 			mclk-fs = <256>;
 			continuous-clock;
 			suffix-name = "alsaPORT-loopback-HDMI";
@@ -983,7 +977,8 @@
 		/*enable default mclk(12.288M), before extern codec start*/
 		//start_clk_enable = <1>;
 
-		status = "okay";
+		/* Disabled: dai-link removed to align hw:0,2 with TDM-C (HDMI RX) */
+		status = "disabled";
 	};
 
 	tdmb:tdm@1 {
