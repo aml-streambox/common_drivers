@@ -1897,7 +1897,9 @@
 	 */
 	cma_size = <280>;
 	frame_buff_num = <10>;
+	/* afbce_bit_mode = <0x11>; */
 	vdin_function_sel = <0x101>;
+	/* double_write_en; */
 };
 
 &vdin1 {
