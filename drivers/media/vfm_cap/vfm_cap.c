@@ -31,6 +31,7 @@
 #include <linux/dma-buf.h>
 #include <linux/scatterlist.h>
 #include <linux/videodev2.h>
+#include <drm/drm_fourcc.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-fh.h>
@@ -326,58 +327,228 @@ static const struct dma_buf_ops vfm_cap_dmabuf_ops = {
 	.mmap         = vfm_cap_dmabuf_mmap,
 };
 
+/* ========== AFBC Repack DMA-buf Ops (Zero-Copy Layout Fix) ========== */
+
+/*
+ * vdin AFBC CMA layout:  [body][header][table]
+ * Standard ARM AFBC:     [header][body]
+ *
+ * These ops export a DMA-buf with a 2-entry scatter-gather list that
+ * presents the header region first and body region second.  The Mali
+ * Bifrost GPU MMU maps the SG entries into contiguous GPU virtual
+ * address space, so the GPU sees standard [header][body] layout.
+ *
+ * Zero-copy: no pixel data is copied or moved.  We just re-order
+ * the physical page references in the SG table.
+ */
+
+static int vfm_cap_afbc_dmabuf_attach(struct dma_buf *dbuf,
+				       struct dma_buf_attachment *attachment)
+{
+	struct vfm_cap_afbc_dmabuf *priv = dbuf->priv;
+	struct vfm_cap_dmabuf_attach *attach;
+	struct sg_table *sgt;
+	struct scatterlist *sg;
+	int ret;
+
+	attach = kzalloc(sizeof(*attach), GFP_KERNEL);
+	if (!attach)
+		return -ENOMEM;
+
+	sgt = &attach->sgt;
+	ret = sg_alloc_table(sgt, 2, GFP_KERNEL);
+	if (ret) {
+		kfree(attach);
+		return ret;
+	}
+
+	/* SG entry 0: header (comes first in standard AFBC) */
+	sg = sgt->sgl;
+	sg_set_page(sg, phys_to_page(priv->head_paddr),
+		    PAGE_ALIGN(priv->head_size), 0);
+
+	/* SG entry 1: body (comes second in standard AFBC) */
+	sg = sg_next(sg);
+	sg_set_page(sg, phys_to_page(priv->body_paddr),
+		    PAGE_ALIGN(priv->body_size), 0);
+
+	attach->dma_dir = DMA_NONE;
+	attachment->priv = attach;
+	return 0;
+}
+
+static struct sg_table *vfm_cap_afbc_dmabuf_map(
+				struct dma_buf_attachment *attachment,
+				enum dma_data_direction dma_dir)
+{
+	struct vfm_cap_dmabuf_attach *attach = attachment->priv;
+	struct vfm_cap_afbc_dmabuf *priv = attachment->dmabuf->priv;
+	struct sg_table *sgt = &attach->sgt;
+	struct scatterlist *sg;
+
+	if (attach->dma_dir == dma_dir)
+		return sgt;
+
+	/* Identity mapping: CMA physical address IS the DMA address */
+	sg = sgt->sgl;
+	sg_dma_address(sg) = priv->head_paddr;
+	sg_dma_len(sg) = PAGE_ALIGN(priv->head_size);
+
+	sg = sg_next(sg);
+	sg_dma_address(sg) = priv->body_paddr;
+	sg_dma_len(sg) = PAGE_ALIGN(priv->body_size);
+
+	sgt->nents = 2;
+
+	attach->dma_dir = dma_dir;
+	return sgt;
+}
+
+static void vfm_cap_afbc_dmabuf_release(struct dma_buf *dbuf)
+{
+	struct vfm_cap_afbc_dmabuf *priv = dbuf->priv;
+
+	if (priv) {
+		if (priv->frame && priv->dev) {
+			vfm_cap_dbg(2, "afbc dmabuf release: frame %u refcount=%d\n",
+				     priv->frame->index,
+				     atomic_read(&priv->frame->refcount));
+			frame_put(priv->dev, priv->frame);
+		}
+		kfree(priv);
+	}
+}
+
+static int vfm_cap_afbc_dmabuf_mmap(struct dma_buf *dbuf,
+				     struct vm_area_struct *vma)
+{
+	/* AFBC repacked buffers are not intended for CPU mmap.
+	 * Consumers should use GPU import only. */
+	return -ENODEV;
+}
+
+static const struct dma_buf_ops vfm_cap_afbc_dmabuf_ops = {
+	.attach        = vfm_cap_afbc_dmabuf_attach,
+	.detach        = vfm_cap_dmabuf_detach,  /* reuse: same sg_free logic */
+	.map_dma_buf   = vfm_cap_afbc_dmabuf_map,
+	.unmap_dma_buf = vfm_cap_dmabuf_unmap,   /* reuse: no-op */
+	.release       = vfm_cap_afbc_dmabuf_release,
+	.mmap          = vfm_cap_afbc_dmabuf_mmap,
+};
+
 /**
  * vfm_cap_export_frame_dmabuf() - Export a cap_frame as a DMA-buf
  *
- * Creates a dma_buf backed by the vdin0 CMA physical memory of the
- * given frame. Increments the frame's refcount (decremented when the
- * consumer closes the DMA-buf fd via .release callback).
+ * For AFBC frames: creates a repacked DMA-buf with a 2-entry SG table
+ * presenting [header][body] in standard ARM AFBC order (zero-copy).
+ *
+ * For linear frames: creates a single-entry DMA-buf pointing to the
+ * CMA buffer as-is.
  *
  * Returns a dma_buf pointer, or ERR_PTR on failure.
- * Caller must convert to fd via dma_buf_fd() if needed.
  */
 static struct dma_buf *vfm_cap_export_frame_dmabuf(struct vfm_cap_dev *dev,
-						   struct cap_frame *frame)
+					   struct cap_frame *frame)
 {
-	struct vfm_cap_dmabuf *priv;
 	struct dma_buf *dbuf;
 	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
 
-	if (!frame || !frame->vf || !frame->phy_addr)
+	if (!frame || !frame->vf)
 		return ERR_PTR(-EINVAL);
 
-	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
-	if (!priv)
-		return ERR_PTR(-ENOMEM);
+	/*
+	 * AFBC path: repack as [header][body] via 2-entry SG table.
+	 * This makes the DMA-buf importable by Mali's Vulkan driver
+	 * which expects standard ARM AFBC layout.
+	 */
+	if (frame->is_afbc && frame->comp_head_addr && frame->comp_body_addr &&
+	    frame->comp_head_size > 0 && frame->comp_body_size > 0) {
+		struct vfm_cap_afbc_dmabuf *apriv;
 
-	priv->paddr = frame->phy_addr;
-	priv->size = frame->buf_size;
-	priv->frame = frame;
-	priv->dev = dev;
+		apriv = kzalloc(sizeof(*apriv), GFP_KERNEL);
+		if (!apriv)
+			return ERR_PTR(-ENOMEM);
 
-	exp_info.ops = &vfm_cap_dmabuf_ops;
-	exp_info.size = PAGE_ALIGN(frame->buf_size);
-	exp_info.flags = O_RDONLY | O_CLOEXEC;
-	exp_info.priv = priv;
-	exp_info.exp_name = "vfm_cap";
+		apriv->head_paddr = frame->comp_head_addr;
+		apriv->head_size = frame->comp_head_size;
+		apriv->body_paddr = frame->comp_body_addr;
+		apriv->body_size = frame->comp_body_size;
+		apriv->frame = frame;
+		apriv->dev = dev;
 
-	dbuf = dma_buf_export(&exp_info);
-	if (IS_ERR(dbuf)) {
-		kfree(priv);
+		exp_info.ops = &vfm_cap_afbc_dmabuf_ops;
+		exp_info.size = PAGE_ALIGN(frame->comp_head_size) +
+				PAGE_ALIGN(frame->comp_body_size);
+		exp_info.flags = O_RDONLY | O_CLOEXEC;
+		exp_info.priv = apriv;
+		exp_info.exp_name = "vfm_cap_afbc";
+
+		dbuf = dma_buf_export(&exp_info);
+		if (IS_ERR(dbuf)) {
+			kfree(apriv);
+			return dbuf;
+		}
+
+		atomic_inc(&frame->refcount);
+
+		vfm_cap_dbg(1,
+			     "exported AFBC frame %u as repacked dmabuf "
+			     "(head=%pa/%zu body=%pa/%zu total=%zu refcount=%d)\n",
+			     frame->index,
+			     &frame->comp_head_addr, frame->comp_head_size,
+			     &frame->comp_body_addr, frame->comp_body_size,
+			     (size_t)exp_info.size,
+			     atomic_read(&frame->refcount));
+
 		return dbuf;
 	}
 
-	/*
-	 * Increment frame refcount for the DMA-buf reference.
-	 * This keeps the vframe alive until the consumer closes the fd.
-	 */
-	atomic_inc(&frame->refcount);
+	/* Linear path: single contiguous CMA buffer */
+	{
+		struct vfm_cap_dmabuf *priv;
 
-	vfm_cap_dbg(2, "exported frame %u as dmabuf (paddr=0x%llx size=%zu refcount=%d)\n",
-		     frame->index, (u64)frame->phy_addr, frame->buf_size,
-		     atomic_read(&frame->refcount));
+		if (!frame->phy_addr)
+			return ERR_PTR(-EINVAL);
 
-	return dbuf;
+		priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+		if (!priv)
+			return ERR_PTR(-ENOMEM);
+
+		priv->paddr = frame->phy_addr;
+		priv->size = frame->buf_size;
+		priv->frame = frame;
+		priv->dev = dev;
+
+		exp_info.ops = &vfm_cap_dmabuf_ops;
+		exp_info.size = PAGE_ALIGN(frame->buf_size);
+		exp_info.flags = O_RDONLY | O_CLOEXEC;
+		exp_info.priv = priv;
+		exp_info.exp_name = "vfm_cap";
+
+		dbuf = dma_buf_export(&exp_info);
+		if (IS_ERR(dbuf)) {
+			kfree(priv);
+			return dbuf;
+		}
+
+		atomic_inc(&frame->refcount);
+
+		vfm_cap_dbg(2, "exported frame %u as dmabuf (paddr=0x%llx size=%zu refcount=%d)\n",
+			     frame->index, (u64)frame->phy_addr, frame->buf_size,
+			     atomic_read(&frame->refcount));
+
+		return dbuf;
+	}
+}
+
+static size_t vfm_cap_afbc_header_size(unsigned int width, unsigned int height)
+{
+	return PAGE_ALIGN((roundup(width, 64) * roundup(height, 64)) / 32);
+}
+
+static size_t vfm_cap_afbc_table_size(size_t body_size)
+{
+	return PAGE_ALIGN((body_size * 4) / PAGE_SIZE);
 }
 
 /* ========== Format Detection from vframe ========== */
@@ -1285,9 +1456,58 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		INIT_LIST_HEAD(&frame->list);
 		INIT_LIST_HEAD(&frame->pending_node);
 
-		/* Cache physical address and size for zero-copy DMA-buf export */
-		frame->phy_addr = vf->canvas0_config[0].phy_addr;
-		frame->buf_size = dev->sizeimage[0];
+		/* Cache export layout for zero-copy DMA-buf export. */
+		frame->is_afbc = !!(vf->type & VIDTYPE_COMPRESS);
+		frame->comp_head_addr = vf->compHeadAddr;
+		frame->comp_body_addr = vf->compBodyAddr;
+		frame->comp_table_addr = 0;
+		frame->comp_head_size = 0;
+		frame->comp_table_size = 0;
+		frame->comp_body_size = 0;
+		frame->comp_width = 0;
+		frame->comp_height = 0;
+		frame->drm_modifier = 0;
+
+		if (frame->is_afbc && vf->compBodyAddr && vf->compHeadAddr &&
+		    vf->compHeadAddr > vf->compBodyAddr) {
+			size_t body_size = vf->compHeadAddr - vf->compBodyAddr;
+			size_t head_size = vfm_cap_afbc_header_size(vf->compWidth,
+							     vf->compHeight);
+			size_t table_size = vfm_cap_afbc_table_size(body_size);
+
+			frame->phy_addr = vf->compBodyAddr;
+			frame->buf_size = body_size + head_size + table_size;
+			frame->comp_table_addr = vf->compHeadAddr + head_size;
+			frame->comp_head_size = head_size;
+			frame->comp_table_size = table_size;
+			frame->comp_body_size = body_size;
+			frame->comp_width = vf->compWidth;
+			frame->comp_height = vf->compHeight;
+			frame->drm_modifier = DRM_FORMAT_MOD_ARM_AFBC(
+				AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
+				AFBC_FORMAT_MOD_SPARSE |
+				AFBC_FORMAT_MOD_SPLIT);
+			vfm_cap_dbg(1,
+				    "afbc frame idx=%u src=%ux%u coded=%ux%u body=%pa/%zu head=%pa/%zu table=%pa/%zu mod=%#llx\n",
+				    vf->index, vf->width, vf->height,
+				    frame->comp_width, frame->comp_height,
+				    &frame->comp_body_addr, frame->comp_body_size,
+				    &frame->comp_head_addr, frame->comp_head_size,
+				    &frame->comp_table_addr, frame->comp_table_size,
+				    frame->drm_modifier);
+		} else {
+			frame->phy_addr = vf->canvas0_config[0].phy_addr;
+			frame->buf_size = dev->sizeimage[0];
+			frame->is_afbc = false;
+			frame->comp_head_addr = 0;
+			frame->comp_table_addr = 0;
+			frame->comp_body_addr = 0;
+			frame->comp_head_size = 0;
+			frame->comp_table_size = 0;
+			frame->comp_body_size = 0;
+			frame->comp_width = 0;
+			frame->comp_height = 0;
+		}
 
 		/*
 		 * Set refcount and manage frame ownership.
@@ -1742,9 +1962,6 @@ static int vfm_cap_ioctl_get_dmabuf(struct vfm_cap_consumer *cons,
 	struct vfm_cap_buffer *buf;
 	int fd;
 
-	if (req->reserved != 0)
-		return -EINVAL;
-
 	if (req->index >= vq->num_buffers)
 		return -EINVAL;
 
@@ -1775,6 +1992,21 @@ static int vfm_cap_ioctl_get_dmabuf(struct vfm_cap_consumer *cons,
 	if (buf->dbuf_fd >= 0) {
 		req->fd = buf->dbuf_fd;
 		req->size = buf->frame ? buf->frame->buf_size : 0;
+		req->flags = (buf->frame && buf->frame->is_afbc) ?
+			VFM_CAP_DMABUF_FLAG_AFBC : 0;
+		req->drm_modifier = buf->frame ? buf->frame->drm_modifier : 0;
+		req->comp_head_addr = buf->frame ? buf->frame->comp_head_addr : 0;
+		req->comp_table_addr = buf->frame ? buf->frame->comp_table_addr : 0;
+		req->comp_body_addr = buf->frame ? buf->frame->comp_body_addr : 0;
+		req->comp_width = buf->frame ? buf->frame->comp_width : 0;
+		req->comp_height = buf->frame ? buf->frame->comp_height : 0;
+		req->comp_head_size = buf->frame ? buf->frame->comp_head_size : 0;
+		req->comp_table_size = buf->frame ? buf->frame->comp_table_size : 0;
+		req->comp_body_size = buf->frame ? buf->frame->comp_body_size : 0;
+		req->reserved0 = 0;
+		req->reserved1 = 0;
+		req->reserved2 = 0;
+		req->reserved3 = 0;
 		return 0;
 	}
 
@@ -1803,6 +2035,21 @@ static int vfm_cap_ioctl_get_dmabuf(struct vfm_cap_consumer *cons,
 	buf->dbuf_fd = fd;
 	req->fd = fd;
 	req->size = buf->frame ? buf->frame->buf_size : 0;
+	req->flags = (buf->frame && buf->frame->is_afbc) ?
+		VFM_CAP_DMABUF_FLAG_AFBC : 0;
+	req->drm_modifier = buf->frame ? buf->frame->drm_modifier : 0;
+	req->comp_head_addr = buf->frame ? buf->frame->comp_head_addr : 0;
+	req->comp_table_addr = buf->frame ? buf->frame->comp_table_addr : 0;
+	req->comp_body_addr = buf->frame ? buf->frame->comp_body_addr : 0;
+	req->comp_width = buf->frame ? buf->frame->comp_width : 0;
+	req->comp_height = buf->frame ? buf->frame->comp_height : 0;
+	req->comp_head_size = buf->frame ? buf->frame->comp_head_size : 0;
+	req->comp_table_size = buf->frame ? buf->frame->comp_table_size : 0;
+	req->comp_body_size = buf->frame ? buf->frame->comp_body_size : 0;
+	req->reserved0 = 0;
+	req->reserved1 = 0;
+	req->reserved2 = 0;
+	req->reserved3 = 0;
 
 	vfm_cap_dbg(1, "get_dmabuf: buf %u -> fd %d (size=%u)\n",
 		     req->index, fd, req->size);

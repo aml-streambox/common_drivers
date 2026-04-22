@@ -66,10 +66,25 @@ struct vfm_cap_dmabuf_req {
 	__u32 index;		/* in: vb2 buffer index from DQBUF */
 	__s32 fd;		/* out: DMA-buf file descriptor */
 	__u32 size;		/* out: buffer size in bytes */
-	__u32 reserved;		/* must be 0 */
+	__u32 flags;		/* out: VFM_CAP_DMABUF_FLAG_* */
+	__u64 drm_modifier;	/* out: DRM modifier (0 for linear) */
+	__u64 comp_head_addr;	/* out: AFBC header physical address */
+	__u64 comp_table_addr;	/* out: AFBC table physical address */
+	__u64 comp_body_addr;	/* out: AFBC body physical address */
+	__u32 comp_width;	/* out: AFBC coded width */
+	__u32 comp_height;	/* out: AFBC coded height */
+	__u32 comp_head_size;	/* out: AFBC header size in bytes */
+	__u32 comp_table_size;	/* out: AFBC table size in bytes */
+	__u32 comp_body_size;	/* out: AFBC body size in bytes */
+	__u32 reserved0;
+	__u32 reserved1;
+	__u32 reserved2;
+	__u32 reserved3;
 };
 
 #define VFM_CAP_IOC_GET_DMABUF	_IOWR('V', 192, struct vfm_cap_dmabuf_req)
+
+#define VFM_CAP_DMABUF_FLAG_AFBC	(1U << 0)
 
 /* ---------- Signal monitoring ---------- */
 
@@ -163,6 +178,32 @@ struct vfm_cap_dmabuf {
 };
 
 /**
+ * struct vfm_cap_afbc_dmabuf - Private data for a repacked AFBC DMA-buf
+ * @head_paddr: Physical address of the AFBC header region
+ * @head_size:  Size of the header region (PAGE_ALIGN'd)
+ * @body_paddr: Physical address of the AFBC body region
+ * @body_size:  Size of the body region (PAGE_ALIGN'd)
+ * @frame:      Back-pointer to cap_frame (holds vframe reference)
+ * @dev:        Back-pointer to vfm_cap_dev
+ *
+ * For standard ARM AFBC the layout is header-then-body in a single
+ * contiguous buffer.  vdin produces body-then-header-then-table.
+ * This DMA-buf exports a 2-entry SG list that presents the header
+ * first and body second, so the Mali GPU MMU maps them as a single
+ * contiguous virtual buffer in the standard AFBC order.  The scatter-
+ * gather table region is excluded (GPU doesn't need it).
+ * Zero-copy: no pixel data is copied.
+ */
+struct vfm_cap_afbc_dmabuf {
+	phys_addr_t		head_paddr;
+	size_t			head_size;
+	phys_addr_t		body_paddr;
+	size_t			body_size;
+	struct cap_frame	*frame;
+	struct vfm_cap_dev	*dev;
+};
+
+/**
  * struct vfm_cap_dmabuf_attach - Per-attachment state for DMA-buf
  */
 struct vfm_cap_dmabuf_attach {
@@ -194,6 +235,16 @@ struct cap_frame {
 	bool			in_use;
 	phys_addr_t		phy_addr;
 	size_t			buf_size;
+	phys_addr_t		comp_head_addr;
+	phys_addr_t		comp_table_addr;
+	phys_addr_t		comp_body_addr;
+	u32			comp_width;
+	u32			comp_height;
+	size_t			comp_head_size;
+	size_t			comp_table_size;
+	size_t			comp_body_size;
+	u64			drm_modifier;
+	bool			is_afbc;
 };
 
 /* ---------- V4L2 buffer wrapper ---------- */
