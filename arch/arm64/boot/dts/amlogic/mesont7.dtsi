@@ -2534,7 +2534,7 @@
 		interrupt-names = "ddr_bandwidth";
 	};
 
-	dmc_monitor {
+	dmc_monitor: dmc_monitor {
 		compatible = "amlogic,dmc_monitor-t7";
 		status = "okay";
 		memory-region = <&dmc_reserved>;
