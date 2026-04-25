@@ -29,6 +29,10 @@
 	#address-cells = <2>;
 	#size-cells = <2>;
 
+	chosen {
+		stdout-path = "serial0:921600n8";
+	};
+
 	aliases {
 		serial0 = &uart_A;
 		serial1 = &uart_C;
@@ -2072,4 +2076,9 @@
 
 &ge2d {
 	memory-region = <&ge2d_cma_reserved>;
+};
+
+/* DMC monitor disabled: causes SError on 8GB devices with amlcam driver */
+&dmc_monitor {
+	status = "disabled";
 };
