@@ -1562,6 +1562,8 @@ static void do_serror(void *data, struct pt_regs *regs, unsigned int esr, int *r
 {
 	serror_dump_dmc_reg();
 	oops_in_progress++;
+	/* Prevent kernel panic on DMC SError (workaround for amlcam on 8GB TVPRO) */
+	*ret = 1;
 }
 #endif
 #endif
