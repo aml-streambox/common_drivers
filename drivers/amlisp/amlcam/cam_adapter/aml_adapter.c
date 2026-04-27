@@ -1127,6 +1127,11 @@ int aml_adap_subdev_init(void *c_dev)
 
 	aml_adap_global_init();
 
+	if (adap_dev && adap_dev->ops && adap_dev->ops->hw_reset) {
+		dev_err(adap_dev->dev, "reset adapter before irq clear\n");
+		adap_dev->ops->hw_reset(adap_dev);
+	}
+
 	if (adap_dev && adap_dev->ops && adap_dev->ops->hw_clear_irq) {
 		dev_err(adap_dev->dev, "clear irq\n");
 		adap_dev->ops->hw_clear_irq(adap_dev);

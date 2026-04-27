@@ -88,6 +88,7 @@ static int csiphy_of_parse_endpoint_node(struct device_node *node,
 static int csiphy_of_parse_ports(struct csiphy_dev_t *csiphy_dev)
 {
 	unsigned int rtn = 0;
+	unsigned int endpoints = 0;
 	struct device_node *node = NULL;
 	struct device_node *remote = NULL;
 	struct csiphy_async_subdev *c_asd = NULL;
@@ -102,6 +103,8 @@ static int csiphy_of_parse_ports(struct csiphy_dev_t *csiphy_dev)
 	for_each_endpoint_of_node(dev->of_node, node) {
 		if (!of_device_is_available(node))
 			continue;
+
+		endpoints++;
 
 		remote = of_graph_get_remote_port_parent(node);
 		if (!remote) {
@@ -145,6 +148,11 @@ static int csiphy_of_parse_ports(struct csiphy_dev_t *csiphy_dev)
 	}
 
 	of_node_put(node);
+
+	if (!endpoints) {
+		dev_err(dev, "No sensor endpoint configured\n");
+		return -ENODEV;
+	}
 
 	return rtn;
 }
