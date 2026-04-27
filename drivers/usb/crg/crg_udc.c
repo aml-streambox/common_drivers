@@ -545,9 +545,25 @@ static int crg_issue_command(struct crg_gadget_dev *crg_udc,
 		__func__, type, param0, param1);
 
 	if (check_complete) {
+		/* Bounded poll: 10000 * 1us = 10ms hard cap. Prevents hard
+		 * lockup when HW stalls (e.g. periodic schedule overload with
+		 * 4+ HID functions). Called with spinlock held from many
+		 * sites, so this MUST not spin forever.
+		 */
+		int retries = 10000;
+
 		do {
 			tmp = reg_read(&uccr->cmd_control);
-		} while (tmp & CRG_U3DC_CMD_CTRL_ACTIVE);
+			if (!(tmp & CRG_U3DC_CMD_CTRL_ACTIVE))
+				break;
+			udelay(1);
+		} while (--retries);
+
+		if (!retries && (tmp & CRG_U3DC_CMD_CTRL_ACTIVE)) {
+			CRG_ERROR("%s timeout! type=%d par0=0x%x par1=0x%x\n",
+				__func__, type, param0, param1);
+			return -ETIMEDOUT;
+		}
 
 		status = CRG_U3DC_CMD_CTRL_STATUS_GET(tmp);
 		if (status != 0) {
@@ -1400,6 +1416,12 @@ void handle_cmpl_code_success(struct crg_gadget_dev *crg_udc,
 
 	trb_pt = (u64)event->dw0 + ((u64)(event->dw1) << 32);
 	p_trb = tran_trb_dma_to_virt(udc_ep_ptr, trb_pt);
+	if (!p_trb) {
+		CRG_ERROR("%s: NULL p_trb DCI=%d trb_pt=0x%llx\n",
+			__func__, udc_ep_ptr->DCI,
+			(unsigned long long)trb_pt);
+		return;
+	}
 
 	xdebug("trb_pt = 0x%lx, p_trb = 0x%p\n", (unsigned long)trb_pt, p_trb);
 	xdebug("trb dw0 = 0x%x\n", p_trb->dw0);
@@ -1445,6 +1467,12 @@ void update_dequeue_pt(struct event_trb_s *event,
 	struct transfer_trb_s *deq_pt;
 
 	deq_pt = tran_trb_dma_to_virt(udc_ep, dq_pt_addr);
+	if (!deq_pt) {
+		CRG_ERROR("%s: NULL deq_pt DCI=%d addr=0x%llx\n",
+			__func__, udc_ep->DCI,
+			(unsigned long long)dq_pt_addr);
+		return;
+	}
 	deq_pt++;
 
 	if (GETF(TRB_TYPE, deq_pt->dw3) == TRB_TYPE_LINK)
@@ -1684,9 +1712,24 @@ static int set_ep_halt(struct crg_gadget_dev *crg_udc, int DCI, unsigned long fl
 
 	param0 = (0x1 << DCI);
 	crg_issue_command(crg_udc, CRG_CMD_SET_HALT, param0, 0);
-	do {
-		tmp = reg_read(&uccr->ep_running);
-	} while ((tmp & param0) != 0);
+	{
+		/* Bounded poll for ep_running clear; avoid hard lockup if
+		 * HW fails to retire the halt (observed with overloaded
+		 * periodic schedule: 4+ HID interrupt EPs).
+		 */
+		int retries = 10000;
+
+		do {
+			tmp = reg_read(&uccr->ep_running);
+			if ((tmp & param0) == 0)
+				break;
+			udelay(1);
+		} while (--retries);
+
+		if (!retries && (tmp & param0))
+			CRG_ERROR("%s ep_running clear timeout DCI=%d\n",
+				__func__, DCI);
+	}
 
 	/* clean up the request queue */
 	nuke(udc_ep_ptr, -ECONNRESET, flags);
@@ -2004,7 +2047,18 @@ static int crg_udc_ep_enable(struct usb_ep *ep,
 	epcx = (struct ep_cx_s *)(crg_udc->p_epcx + udc_ep->DCI - 2);
 
 	param0 = (0x1 << udc_ep->DCI);
-	crg_issue_command(crg_udc, CRG_CMD_CONFIG_EP, param0, 0);
+	{
+		int ret = crg_issue_command(crg_udc, CRG_CMD_CONFIG_EP,
+				param0, 0);
+
+		if (ret) {
+			CRG_ERROR("CONFIG_EP failed for DCI %d, ret=%d\n",
+				udc_ep->DCI, ret);
+			udc_ep->ep_state = EP_STATE_DISABLED;
+			spin_unlock_irqrestore(&crg_udc->udc_lock, flags);
+			return ret;
+		}
+	}
 
 	CRG_DEBUG("config ep and start, DCI=%d\n", udc_ep->DCI);
 	if (crg_udc->device_state == USB_STATE_ADDRESS)
@@ -3952,10 +4006,19 @@ int crg_handle_xfer_event(struct crg_gadget_dev *crg_udc,
 		break;
 	}
 
-	case CMPL_CODE_BABBLE_DETECTED_ERR:
-	case CMPL_CODE_INVALID_STREAM_TYPE_ERR:
 	case CMPL_CODE_RING_UNDERRUN:
 	case CMPL_CODE_RING_OVERRUN:
+		/* Normal condition for periodic IN endpoints with no data
+		 * pending; HW will simply NAK. Halting the EP here was the
+		 * trigger for a feedback loop that hung the controller when
+		 * 4+ HID interrupt endpoints were active.
+		 */
+		CRG_DEBUG("ring under/overrun comp_code=0x%x DCI=%d (ignored)\n",
+			comp_code, udc_ep_ptr->DCI);
+		break;
+
+	case CMPL_CODE_BABBLE_DETECTED_ERR:
+	case CMPL_CODE_INVALID_STREAM_TYPE_ERR:
 	case CMPL_CODE_ISOCH_BUFFER_OVERRUN:
 	case CMPL_CODE_USB_TRANS_ERR:
 	case CMPL_CODE_TRB_ERR:
