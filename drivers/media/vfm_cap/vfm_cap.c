@@ -662,43 +662,67 @@ static void vfm_cap_sm_poll_work(struct work_struct *work)
 		dev->sm_state = new_state;
 
 		if (old_state == VFM_SM_STABLE && new_state != VFM_SM_STABLE) {
+			unsigned long flags;
+			u32 sig_status;
+
 			/*
-			 * Signal lost or unstable. Enter drain mode:
+			 * Signal lost, unstable, or transitioning. Enter drain
+			 * mode regardless of the specific non-STABLE state:
 			 * - Stop adding new frames to pending_list
 			 * - Flush any frames already pending V4L2 delivery
-			 * - Let deliver_work finish naturally
+			 * - Recycle previously-published frames so we never
+			 *   deliver a stale-geometry frame after the source
+			 *   changes shape.
+			 * - Invalidate cached format and notify userspace via
+			 *   V4L2_EVENT_SOURCE_CHANGE so it stops trusting the
+			 *   pre-transition width/height/sizeimage.
 			 */
-			vfm_cap_info("signal lost, entering drain mode\n");
+			vfm_cap_info("signal lost (state=%d), entering drain mode\n",
+				     new_state);
 			dev->draining = true;
 
 			/* Drain pending V4L2 frames */
 			vfm_cap_drain_pending(dev);
 			flush_work(&dev->deliver_work);
 
-			/* Queue NOSIG or NOTSUP event */
-			if (new_state == VFM_SM_NOSIG || new_state == VFM_SM_NULL) {
-				unsigned long flags;
+			/* Recycle any previously-published v4l2 frame so a
+			 * subsequent acquire never returns stale geometry.
+			 */
+			spin_lock_irqsave(&dev->ready_lock, flags);
+			frame_pool_recycle_all(dev);
+			spin_unlock_irqrestore(&dev->ready_lock, flags);
 
-				spin_lock_irqsave(&dev->fmt_spin, flags);
-				vfm_cap_build_signal_info(dev, &dev->sig_info,
-							  VFM_CAP_SIG_STATUS_NOSIG);
-				dev->fmt_valid = false;
-				spin_unlock_irqrestore(&dev->fmt_spin, flags);
-
-				vfm_cap_queue_source_change(dev,
-					V4L2_EVENT_SRC_CH_RESOLUTION);
-			} else if (new_state == VFM_SM_NOTSUP) {
-				unsigned long flags;
-
-				spin_lock_irqsave(&dev->fmt_spin, flags);
-				vfm_cap_build_signal_info(dev, &dev->sig_info,
-							  VFM_CAP_SIG_STATUS_NOTSUP);
-				dev->fmt_valid = false;
-				spin_unlock_irqrestore(&dev->fmt_spin, flags);
-
-				vfm_cap_queue_source_change(dev,
-					V4L2_EVENT_SRC_CH_RESOLUTION);
+			/* Map SM state -> signal status reported to userspace */
+			switch (new_state) {
+			case VFM_SM_NOTSUP:
+				sig_status = VFM_CAP_SIG_STATUS_NOTSUP;
+				break;
+			case VFM_SM_UNSTABLE:
+			case VFM_SM_PRESTABLE:
+				sig_status = VFM_CAP_SIG_STATUS_UNSTABLE;
+				break;
+			case VFM_SM_NOSIG:
+			case VFM_SM_NULL:
+			default:
+				sig_status = VFM_CAP_SIG_STATUS_NOSIG;
+				break;
 			}
+
+			spin_lock_irqsave(&dev->fmt_spin, flags);
+			vfm_cap_build_signal_info(dev, &dev->sig_info,
+						  sig_status);
+			/*
+			 * Invalidate cached format unconditionally on any
+			 * STABLE -> non-STABLE transition. This forces
+			 * vfm_cap_g_fmt() to fall back to defaults and
+			 * userspace to refresh geometry on the next
+			 * SOURCE_CHANGE.
+			 */
+			dev->fmt_valid = false;
+			spin_unlock_irqrestore(&dev->fmt_spin, flags);
+
+			vfm_cap_queue_source_change(dev,
+				V4L2_EVENT_SRC_CH_RESOLUTION);
 
 		} else if (old_state != VFM_SM_STABLE &&
 			   new_state == VFM_SM_STABLE) {
@@ -1288,6 +1312,61 @@ static int vfm_cap_recv_event_cb(int type, void *data, void *private_data)
 		/* Cache physical address and size for zero-copy DMA-buf export */
 		frame->phy_addr = vf->canvas0_config[0].phy_addr;
 		frame->buf_size = dev->sizeimage[0];
+
+		/*
+		 * Sanity check: ensure the canvas the producer (vdin0) wrote
+		 * is at least as large as the format we just published to
+		 * userspace. If vdin0 is mid-resolution-change and gives us
+		 * a buffer smaller than dev->sizeimage[0], exporting that
+		 * via DMA-buf would let userspace read past the end of the
+		 * physical allocation and oops the kernel.
+		 *
+		 * Note: sizeimage is PAGE_ALIGN'd, so it can be up to
+		 * PAGE_SIZE-1 bytes larger than the actual pixel data.
+		 * We allow one page of slack to avoid false positives on
+		 * formats like AMLY where canvas_size == exact_data_size
+		 * and sizeimage == PAGE_ALIGN(exact_data_size).
+		 *
+		 * If a mismatch is detected, drop the frame back to vdin0,
+		 * mark format invalid so userspace re-queries on the next
+		 * SOURCE_CHANGE, and skip this delivery cycle.
+		 */
+		{
+			u32 canvas_w = vf->canvas0_config[0].width;
+			u32 canvas_h = vf->canvas0_config[0].height;
+			u32 canvas_size = (u32)canvas_w * canvas_h;
+			u32 need_size = dev->sizeimage[0];
+
+			if (canvas_w && canvas_h &&
+			    canvas_size + PAGE_SIZE <= need_size) {
+				unsigned long iflags;
+
+				vfm_cap_err("canvas/sizeimage mismatch: "
+					    "canvas=%ux%u (~%u B) + PAGE_SIZE < sizeimage=%u; "
+					    "dropping frame to avoid OOB\n",
+					    canvas_w, canvas_h,
+					    canvas_size, need_size);
+
+				/* Invalidate cached format so userspace
+				 * refreshes on next SOURCE_CHANGE.
+				 */
+				spin_lock_irqsave(&dev->fmt_spin, iflags);
+				dev->fmt_valid = false;
+				spin_unlock_irqrestore(&dev->fmt_spin, iflags);
+
+				frame->in_use = false;
+				frame->vf = NULL;
+				spin_unlock_irqrestore(&dev->ready_lock,
+						       flags);
+				vf_put(vf, dev->recv_name);
+				vf_notify_provider(dev->recv_name,
+					VFRAME_EVENT_RECEIVER_PUT, NULL);
+				atomic64_inc(&dev->stat_drops);
+				vfm_cap_queue_source_change(dev,
+					V4L2_EVENT_SRC_CH_RESOLUTION);
+				return 0;
+			}
+		}
 
 		/*
 		 * Set refcount and manage frame ownership.

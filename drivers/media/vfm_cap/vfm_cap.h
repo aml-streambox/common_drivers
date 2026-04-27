@@ -122,13 +122,14 @@ struct vfm_cap_signal_info {
 	__u32 signal_type;	/* HDR/DV/colorimetry from vframe.signal_type */
 	__u32 hdr_status;	/* 0=SDR, 1=HDR10, 2=HLG, 3=HDR10+, 4=DV */
 	__u32 is_interlaced;
-	__u32 status;		/* 0=STABLE, 1=NOSIG, 2=NOTSUP */
+	__u32 status;		/* 0=STABLE, 1=NOSIG, 2=NOTSUP, 3=UNSTABLE */
 	__u32 bitdepth;		/* 8, 10, or 12 */
 };
 
 #define VFM_CAP_SIG_STATUS_STABLE	0
 #define VFM_CAP_SIG_STATUS_NOSIG	1
 #define VFM_CAP_SIG_STATUS_NOTSUP	2
+#define VFM_CAP_SIG_STATUS_UNSTABLE	3
 
 /* ---------- Amlogic Private V4L2 Pixel Formats ---------- */
 
