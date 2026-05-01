@@ -719,6 +719,15 @@ int t7_check_pipeline_path(int *combination, int num_planes,
 }
 #endif
 
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+int t7_check_pipeline_path(int *combination, int num_planes,
+			     struct meson_vpu_pipeline_state *mvps,
+					struct drm_atomic_state *state)
+{
+	return vpu_pipeline_check_block(combination, num_planes, mvps, state);
+}
+#endif
+
 int g12a_check_pipeline_path(int *combination, int num_planes,
 			     struct meson_vpu_pipeline_state *mvps,
 					struct drm_atomic_state *state)
@@ -1002,6 +1011,16 @@ int t7_set_pipeline_para(int *combination, int num_planes,
 }
 #endif
 
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+int t7_set_pipeline_para(int *combination, int num_planes,
+			     struct meson_vpu_pipeline_state *mvps,
+					struct drm_atomic_state *state)
+{
+	vpu_pipeline_enable_block(combination, num_planes, mvps);
+	return 0;
+}
+#endif
+
 int g12a_set_pipeline_para(int *combination, int num_planes,
 			     struct meson_vpu_pipeline_state *mvps,
 					struct drm_atomic_state *state)
@@ -1209,3 +1228,9 @@ struct meson_vpu_pipeline_ops s5_vpu_pipeline_ops = {
 };
 #endif
 
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+struct meson_vpu_pipeline_ops t7_vpu_pipeline_ops = {
+	.check_pipeline_path = t7_check_pipeline_path,
+	.set_pipeline_para = t7_set_pipeline_para,
+};
+#endif

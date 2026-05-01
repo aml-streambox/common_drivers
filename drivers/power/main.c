@@ -44,4 +44,5 @@ static void __exit domain_main_exit(void)
 
 module_init(domain_main_init);
 module_exit(domain_main_exit);
+MODULE_DESCRIPTION("Amlogic power domain support");
 MODULE_LICENSE("GPL v2");

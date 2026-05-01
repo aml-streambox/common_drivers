@@ -588,13 +588,13 @@ aml_bl_extern_probe_err:
 	return -1;
 }
 
-static int aml_bl_extern_remove(struct platform_device *pdev)
+static void aml_bl_extern_remove(struct platform_device *pdev)
 {
 	struct bl_extern_driver_s *bext = platform_get_drvdata(pdev);
 	int index;
 
 	if (!bext)
-		return -1;
+		return;
 
 	index = bext->index;
 	bl_extern_remove_driver(bext);
@@ -603,7 +603,6 @@ static int aml_bl_extern_remove(struct platform_device *pdev)
 	ext_global_init_flag &= ~(1 << index);
 
 	BLEX("[%d]: %s, init_state:0x%x\n", index, __func__, ext_global_init_flag);
-	return 0;
 }
 
 #ifdef CONFIG_OF
@@ -647,4 +646,3 @@ void __exit aml_bl_extern_exit(void)
 //MODULE_AUTHOR("AMLOGIC");
 //MODULE_DESCRIPTION("bl extern driver");
 //MODULE_LICENSE("GPL");
-

@@ -5,9 +5,7 @@
 
 #include <linux/bitfield.h>
 
-#ifdef CONFIG_AMLOGIC_MEDIA_SECURITY
 #include <linux/amlogic/media/vpu_secure/vpu_secure.h>
-#endif
 
 #ifdef CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_DOLBYVISION
 #include <linux/amlogic/media/amdolbyvision/dolby_vision.h>
@@ -127,7 +125,7 @@ static struct afbc_status_reg_s afbc_status_regs = {
 	VPU_MAFBC_SURFACE_CFG,
 };
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
 static struct afbc_osd_reg_s afbc_osd_t7_regs[MESON_MAX_OSDS] = {
 	{
 		VPU_MAFBC_HEADER_BUF_ADDR_LOW_S0,
@@ -470,7 +468,7 @@ static void osd_afbc_enable(struct meson_vpu_block *vblk,
 	}
 }
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
 static void t7_osd_afbc_enable(struct meson_vpu_block *vblk,
 			       struct rdma_reg_ops *reg_ops,
 			       struct afbc_status_reg_s *reg, u32 osd_index, bool flag)
@@ -675,7 +673,7 @@ static void g12a_osd_afbc_set_state(struct meson_vpu_block *vblk,
 	MESON_DRM_BLOCK("%s set_state called.\n", afbc->base.name);
 }
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
 static void osd_afbc_ctrl_init(struct meson_vpu_block *vblk,
 	struct rdma_reg_ops *reg_ops, struct meson_vpu_pipeline_state *mvps)
 {
@@ -1572,7 +1570,7 @@ static void osd_afbc_dump_register(struct drm_printer *p,
 		   reg_addr, value);
 }
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
 static void t7_osd_afbc_dump_register(struct drm_printer *p,
 						struct meson_vpu_block *vblk)
 {
@@ -1724,7 +1722,7 @@ static void osd_afbc_hw_disable(struct meson_vpu_block *vblk,
 	MESON_DRM_BLOCK("%s disable called.\n", afbc->base.name);
 }
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
 static void t7_osd_afbc_hw_disable(struct meson_vpu_block *vblk,
 				   struct meson_vpu_block_state *state)
 {
@@ -1920,6 +1918,39 @@ static void s7d_osd_afbc_hw_init(struct meson_vpu_block *vblk)
 }
 #endif
 
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+static void t7_osd_afbc_hw_init(struct meson_vpu_block *vblk)
+{
+	struct meson_vpu_afbc *afbc = to_afbc_block(vblk);
+
+	afbc->afbc_regs = &afbc_osd_t7_regs[0];
+	afbc->status_regs = &afbc_status_t7_regs[vblk->index];
+	afbc->num_of_4k_osd = 1;
+	afbc_first_update_done = false;
+
+	switch (vblk->index) {
+	case AFBC_CORE1:
+		afbc->start_surface = 0;
+		afbc->end_surface = 1;
+		break;
+	case AFBC_CORE2:
+		afbc->start_surface = 2;
+		afbc->end_surface = 2;
+		break;
+	case AFBC_CORE3:
+		afbc->start_surface = 3;
+		afbc->end_surface = 3;
+		break;
+	default:
+		afbc->start_surface = 0;
+		afbc->end_surface = 0;
+		break;
+	};
+
+	MESON_DRM_BLOCK("%s hw_init called.\n", afbc->base.name);
+}
+#endif
+
 void arm_fbc_start(struct meson_vpu_pipeline_state *pipeline_state, struct rdma_reg_ops *reg_ops)
 {
 	if (!pipeline_state->global_afbc && global_afbc_mask) {
@@ -2020,5 +2051,16 @@ struct meson_vpu_block_ops s7d_afbc_ops = {
 	.disable = osd_afbc_hw_disable,
 	.dump_register = osd_afbc_dump_register,
 	.init = s7d_osd_afbc_hw_init,
+};
+#endif
+
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+struct meson_vpu_block_ops t7_afbc_ops = {
+	.check_state = osd_afbc_check_state,
+	.update_state = t7_osd_afbc_set_state,
+	.enable = osd_afbc_hw_enable,
+	.disable = t7_osd_afbc_hw_disable,
+	.dump_register = t7_osd_afbc_dump_register,
+	.init = t7_osd_afbc_hw_init,
 };
 #endif

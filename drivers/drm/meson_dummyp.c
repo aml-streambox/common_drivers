@@ -233,7 +233,7 @@ int meson_dummyp_dev_bind(struct drm_device *drm,
 
 	DRM_INFO("[%s]-[%d] called\n", __func__, __LINE__);
 
-	am_dummyp = kzalloc(sizeof(*am_dummyp), GFP_KERNEL);
+	am_dummyp = devm_kzalloc(drm->dev, sizeof(*am_dummyp), GFP_KERNEL);
 	if (!am_dummyp) {
 		DRM_ERROR("[%s]: alloc drm_dummyp failed\n", __func__);
 		return -ENOMEM;
@@ -249,7 +249,7 @@ int meson_dummyp_dev_bind(struct drm_device *drm,
 	if (ret) {
 		DRM_ERROR("error:%s-%d: Failed to init lcd encoder\n",
 			__func__, __LINE__);
-		goto free_resource;
+		return ret;
 	}
 
 	/* Connector */
@@ -260,7 +260,7 @@ int meson_dummyp_dev_bind(struct drm_device *drm,
 	if (ret) {
 		DRM_ERROR("%s-%d: Failed to init lcd connector\n",
 			__func__, __LINE__);
-		goto free_resource;
+		goto cleanup_encoder;
 	}
 
 	/*update name to amlogic name*/
@@ -275,13 +275,15 @@ int meson_dummyp_dev_bind(struct drm_device *drm,
 	if (ret != 0) {
 		DRM_ERROR("%s-%d: attach failed.\n",
 			__func__, __LINE__);
-		goto free_resource;
+		goto cleanup_connector;
 	}
 
 	return 0;
 
-free_resource:
-	kfree(am_dummyp);
+cleanup_connector:
+	drm_connector_cleanup(connector);
+cleanup_encoder:
+	drm_encoder_cleanup(encoder);
 
 	DRM_DEBUG("%s: %d Exit\n", __func__, ret);
 	return ret;
@@ -295,15 +297,15 @@ int meson_dummyp_dev_unbind(struct drm_device *drm,
 	struct meson_dummyp *am_dummyp = 0;
 
 	if (!connector)
-		DRM_ERROR("%s got invalid connector id %d\n",
-			__func__, connector_id);
-
-	am_dummyp = connector_to_meson_dummyp(connector);
-	if (!am_dummyp)
 		return -EINVAL;
 
-	kfree(am_dummyp);
+	am_dummyp = connector_to_meson_dummyp(connector);
+	if (!am_dummyp) {
+		drm_connector_put(connector);
+		return -EINVAL;
+	}
+
+	drm_connector_put(connector);
 	DRM_DEBUG("[%s]-[%d] called\n", __func__, __LINE__);
 	return 0;
 }
-

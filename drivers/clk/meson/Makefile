@@ -5,6 +5,7 @@ MODULE_NAME = amlogic-clk
 obj-$(CONFIG_AMLOGIC_COMMON_CLK) = $(MODULE_NAME).o
 
 ccflags-y += -I$(srctree)/$(COMMON_DRIVERS_DIR)/drivers/clk/meson
+ccflags-y += -I$(srctree)/$(COMMON_DRIVERS_DIR)/include
 
 $(MODULE_NAME)-y = clk-common-init.o
 $(MODULE_NAME)-$(CONFIG_AMLOGIC_COMMON_CLK_MESON_AO_CLKC) += meson-aoclk.o
@@ -81,6 +82,8 @@ $(T7_MODULE_NAME)-y += t7.o
 PR_FMT_T7 = $(subst amlogic-,,$(T7_MODULE_NAME))
 PR_FMT_DEFINE_T7="-Dpr_fmt(fmt)= \"[$(PR_FMT_T7)]: \" fmt"
 CFLAGS_t7.o += $(PR_FMT_DEFINE_T7)
+
+obj-$(CONFIG_AMLOGIC_COMMON_CLK_T7_DISPLAY) += t7-display-clkc.o
 
 T5M_MODULE_NAME = amlogic-clk-soc-t5m
 obj-$(CONFIG_AMLOGIC_COMMON_CLK_T5M) += $(T5M_MODULE_NAME).o
@@ -200,4 +203,3 @@ $(S7D_MODULE_NAME)-y += s7d.o
 PR_FMT_S7D = $(subst amlogic-,,$(S7D_MODULE_NAME))
 PR_FMT_DEFINE_S7D="-Dpr_fmt(fmt)= \"[$(PR_FMT_S7D)]: \" fmt"
 CFLAGS_s7d.o += $(PR_FMT_DEFINE_S7D)
-

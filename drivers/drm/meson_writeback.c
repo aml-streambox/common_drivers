@@ -436,7 +436,7 @@ int am_meson_writeback_create(struct drm_device *drm)
 	ret = drm_writeback_connector_init(drm, wb_connector,
 			&am_writeback_connector_funcs,
 			&am_writeback_encoder_helper_funcs,
-			writeback_fmts, ARRAY_SIZE(writeback_fmts));
+			writeback_fmts, ARRAY_SIZE(writeback_fmts), BIT(0));
 	if (ret) {
 		DRM_ERROR("Failed to init writeback connector\n");
 		return ret;

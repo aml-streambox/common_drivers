@@ -626,9 +626,13 @@ tx_lts_p3:
 
 static bool frl_schedule_work(struct frl_train_t *p, u32 delay_ms, u32 period_ms)
 {
-	struct frl_work *work = &p->timer_frl_flt;
+	struct frl_work *work;
 
 	//HDMITX_INFO("schedule %s: delay %d ms  period %d ms\n", work->name, delay_ms, period_ms);
+	if (!p || !p->frl_wq)
+		return false;
+
+	work = &p->timer_frl_flt;
 
 	delay_ms = (delay_ms + 3) / 4;
 	period_ms = (period_ms + 3) / 4;
@@ -649,7 +653,12 @@ static bool frl_schedule_work(struct frl_train_t *p, u32 delay_ms, u32 period_ms
 
 static bool frl_stop_work(struct frl_train_t *p)
 {
-	struct frl_work *work = &p->timer_frl_flt;
+	struct frl_work *work;
+
+	if (!p)
+		return false;
+
+	work = &p->timer_frl_flt;
 
 	cancel_delayed_work(&work->dwork);
 	HDMITX_INFO("stop %s\n", work->name);
@@ -665,10 +674,16 @@ void frl_tx_stop(void)
 	if (!p_frl_train)
 		return;
 
-	frl_stop_work(p_frl_train);
+	cancel_delayed_work_sync(&p_frl_train->timer_frl_flt.dwork);
+	HDMITX_INFO("stop %s\n", p_frl_train->timer_frl_flt.name);
 	p_frl_train->flt_tx_state = FLT_TX_LTS_1;
 	p_frl_train->flt_running = false;
 	stop_frl_transmission(p_frl_train);
+	if (p_frl_train->frl_wq) {
+		destroy_workqueue(p_frl_train->frl_wq);
+		p_frl_train->frl_wq = NULL;
+	}
+	p_frl_train = NULL;
 }
 
 void frl_tx_training_handler(struct hdmitx_dev *hdev)
@@ -679,8 +694,13 @@ void frl_tx_training_handler(struct hdmitx_dev *hdev)
 		return;
 	if (!p_frl_train) {
 		p_frl_train = &frl_train_inst;
+		memset(p_frl_train, 0, sizeof(*p_frl_train));
 		p_frl_train->frl_wq = alloc_workqueue("hdmitx21_frl",
 			WQ_HIGHPRI | WQ_CPU_INTENSIVE, 0);
+		if (!p_frl_train->frl_wq) {
+			p_frl_train = NULL;
+			return;
+		}
 		INIT_DELAYED_WORK(&p_frl_train->timer_frl_flt.dwork, tx_train_fsm);
 		p_frl_train->timer_frl_flt.name = "hdmitx21_frl";
 		p_frl_train->auto_pattern_update = false;

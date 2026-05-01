@@ -2446,14 +2446,14 @@ static int dummy_venc_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int dummy_venc_remove(struct platform_device *pdev)
+static void dummy_venc_remove(struct platform_device *pdev)
 {
 	if (!dummy_encp_drv || !dummy_encp_drv->vdata)
-		return 0;
+		return;
 	if (!dummy_enci_drv)
-		return 0;
+		return;
 	if (!dummy_encl_drv)
-		return 0;
+		return;
 
 	dummy_venc_remove_class();
 	vout_unregister_client(&dummy_encp_vout_notifier);
@@ -2474,7 +2474,6 @@ static int dummy_venc_remove(struct platform_device *pdev)
 	dummy_encl_drv = NULL;
 
 	VOUTPR("%s\n", __func__);
-	return 0;
 }
 
 static int dummy_venc_resume(struct platform_device *pdev)
@@ -2544,4 +2543,3 @@ void __exit dummy_venc_exit(void)
 {
 	platform_driver_unregister(&dummy_venc_platform_driver);
 }
-

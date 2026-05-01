@@ -200,6 +200,8 @@ static const struct _hdmi_clkmsr hdmiclkmsr_s7[] = {
 /* only for hpd level */
 int hdmitx21_hpd_hw_op(enum hpd_op cmd)
 {
+	u32 mux;
+
 	switch (global_tx_hw->chip_data->chip_type) {
 	case MESON_CPU_ID_S5:
 		return !!(hd21_read_reg(PADCTRL_GPIOH_I) & (1 << 2));
@@ -210,6 +212,22 @@ int hdmitx21_hpd_hw_op(enum hpd_op cmd)
 	case MESON_CPU_ID_S7D:
 		return !!(hd21_read_reg(PADCTRL_GPIOH_I_S7D) & (1 << 2));
 	case MESON_CPU_ID_T7:
+		switch (cmd) {
+		case HPD_IS_HPD_MUXED:
+			mux = (hd21_read_reg(PADCTRL_PIN_MUX_REGN) >> 28) & 0xf;
+			return mux == 1;
+		case HPD_MUX_HPD:
+			hd21_set_reg_bits(PADCTRL_PIN_MUX_REGN, 1, 28, 4);
+			return 0;
+		case HPD_UNMUX_HPD:
+			hd21_set_reg_bits(PADCTRL_PIN_MUX_REGN, 0, 28, 4);
+			return 0;
+		case HPD_READ_HPD_GPIO:
+		case HPD_INIT_DISABLE_PULLUP:
+		case HPD_INIT_SET_FILTER:
+		default:
+			return !!(hd21_read_reg(PADCTRL_GPIOW_I) & (1 << 15));
+		}
 	default:
 		return !!(hd21_read_reg(PADCTRL_GPIOW_I) & (1 << 15));
 	}
@@ -374,8 +392,18 @@ void hdmitx21_sys_reset(void)
  */
 static bool hdmitx21_uboot_already_display(void)
 {
+	struct hdmitx_dev *hdev = get_hdmitx21_device();
+
 //	if (hdev->pxp_mode)
 //		return 0;
+
+	/*
+	 * T7 firmware can leave PHY bits set even when secure HDMITX core access is
+	 * not ready for Linux. Reusing that state caused an SError in sec_rd8()
+	 * while enabling FIFO interrupts during probe, so force a Linux-side init.
+	 */
+	if (hdev->tx_hw.chip_data->chip_type == MESON_CPU_ID_T7)
+		return 0;
 
 	if (hd21_read_reg(ANACTRL_HDMIPHY_CTRL0))
 		return 1;
@@ -2324,7 +2352,6 @@ static void hdmitx_uninit(struct hdmitx_hw_common *tx_hw)
 {
 	struct hdmitx_dev *hdev = get_hdmitx21_device();
 
-	free_irq(hdev->irq_hpd, (void *)hdev);
 	HDMITX_DEBUG("power off hdmi, unmux hpd\n");
 
 	fifo_flow_enable_intrs(0);
@@ -4647,4 +4674,3 @@ int hdmitx21_pkt_dump(struct hdmitx_dev *hdmitx_device, char *buf, int len)
 	//AUDIO SAMPLE
 	return pos;
 }
-

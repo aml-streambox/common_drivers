@@ -526,17 +526,18 @@ static int aml_vclk_probe(struct platform_device *pdev)
 
 	if (vclk_data->ioremap_flag) {
 		vclk_ioremap_flag = 1;
-		vclk_ioremap(pdev);
+		ret = vclk_ioremap(pdev);
+		if (ret)
+			return ret;
 	}
 
 	VCLKPR("%s OK\n", __func__);
 	return 0;
 }
 
-static int aml_vclk_remove(struct platform_device *pdev)
+static void aml_vclk_remove(struct platform_device *pdev)
 {
 	vclk_iounmap(pdev);
-	return 0;
 }
 
 static struct platform_driver aml_vclk_driver = {

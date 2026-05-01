@@ -4283,13 +4283,13 @@ aml_bl_probe_err:
 	return -1;
 }
 
-static int __exit aml_bl_remove(struct platform_device *pdev)
+static void __exit aml_bl_remove(struct platform_device *pdev)
 {
 	struct aml_bl_drv_s *bdrv = platform_get_drvdata(pdev);
 	int index;
 
 	if (!bdrv)
-		return 0;
+		return;
 
 	index = bdrv->index;
 
@@ -4326,8 +4326,6 @@ static int __exit aml_bl_remove(struct platform_device *pdev)
 	bl_drv[index] = NULL;
 	bl_drv_init_state &= ~(1 << index);
 	bl_global_remove_once();
-
-	return 0;
 }
 
 static struct platform_driver aml_bl_driver = {

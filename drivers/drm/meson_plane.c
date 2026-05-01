@@ -9,6 +9,8 @@
 #include <linux/dma-buf.h>
 #include <uapi/linux/dma-buf.h>
 #include <uapi/linux/magic.h>
+#include <drm/drm_gem_dma_helper.h>
+#include <drm/drm_fb_dma_helper.h>
 #ifdef CONFIG_AMLOGIC_MEDIA_FB
 #include <linux/amlogic/media/osd/osd_logo.h>
 #endif
@@ -243,6 +245,7 @@ int am_meson_dmabuf_export_sync_file_ioctl(struct drm_device *dev,
 	struct dma_fence *fence = NULL;
 	struct dma_buf *dmabuf = NULL;
 	struct sync_file *sync_file;
+	enum dma_resv_usage usage;
 	int fd, ret;
 
 	DRM_DEBUG("dmabuf-%px fence-%px", dmabuf, fence);
@@ -255,22 +258,22 @@ int am_meson_dmabuf_export_sync_file_ioctl(struct drm_device *dev,
 	fd = get_unused_fd_flags(O_CLOEXEC);
 	if (fd < 0)
 		return fd;
-	if (arg->dmabuf_fd <= 0)
-		return -EINVAL;
+	if (arg->dmabuf_fd <= 0) {
+		ret = -EINVAL;
+		goto err_put_fd;
+	}
 
 	dmabuf = dma_buf_get(arg->dmabuf_fd);
-	if (IS_ERR_OR_NULL(dmabuf))
-		return -EINVAL;
-
-	if (arg->flags & DMA_BUF_SYNC_WRITE) {
-		//fence = dma_resv_get_singleton_unlocked(dmabuf->resv);
-		//if (IS_ERR(fence)) {
-		//	ret = PTR_ERR(fence);
-		//	goto err_put_fd;
-		//}
-	} else if (arg->flags & DMA_BUF_SYNC_READ) {
-		fence = dma_resv_get_excl_unlocked(dmabuf->resv);
+	if (IS_ERR(dmabuf)) {
+		ret = PTR_ERR(dmabuf);
+		goto err_put_fd;
 	}
+
+	usage = dma_resv_usage_rw(arg->flags & DMA_BUF_SYNC_WRITE);
+	ret = dma_resv_get_singleton(dmabuf->resv, usage, &fence);
+	if (ret)
+		goto err_put_dmabuf;
+
 	if (!fence)
 		fence = dma_fence_get_stub();
 
@@ -289,6 +292,9 @@ int am_meson_dmabuf_export_sync_file_ioctl(struct drm_device *dev,
 	arg->fd = fd;
 	DRM_DEBUG("dmabuf-%px fence-%px fd-%d", dmabuf, fence, fd);
 	return 0;
+
+err_put_dmabuf:
+	dma_buf_put(dmabuf);
 
 err_put_fd:
 	put_unused_fd(fd);
@@ -568,7 +574,7 @@ static int meson_plane_fb_check(struct drm_plane *plane,
 	struct meson_drm *drv = osd_plane->drv;
 	struct am_meson_fb *meson_fb;
 	#else
-	struct drm_gem_cma_object *gem;
+	struct drm_gem_dma_object *gem;
 	#endif
 	size_t fb_size = 0;
 	phys_addr_t phyaddr;
@@ -600,12 +606,12 @@ static int meson_plane_fb_check(struct drm_plane *plane,
 		return -EINVAL;
 
 	/* Update Canvas with buffer address */
-	gem = drm_fb_cma_get_gem_obj(fb, 0);
+	gem = drm_fb_dma_get_gem_obj(fb, 0);
 	if (!gem) {
 		DRM_INFO("gem is NULL!\n");
 		return -EINVAL;
 	}
-	phyaddr = gem->paddr;
+	phyaddr = gem->dma_addr;
 	#endif
 	plane_info->phy_addr = phyaddr;
 	plane_info->fb_size = (u32)fb_size;
@@ -623,7 +629,7 @@ static int meson_video_plane_fb_check(struct drm_plane *plane,
 	struct am_meson_fb *meson_fb;
 	struct uvm_buf_obj *ubo;
 	#else
-	struct drm_gem_cma_object *gem;
+	struct drm_gem_dma_object *gem;
 	#endif
 	size_t fb_size[2] = {0};
 	phys_addr_t phyaddr, phyaddr1 = 0;
@@ -673,12 +679,12 @@ static int meson_video_plane_fb_check(struct drm_plane *plane,
 		return -EINVAL;
 
 	/* Update Canvas with buffer address */
-	gem = drm_fb_cma_get_gem_obj(fb, 0);
+	gem = drm_fb_dma_get_gem_obj(fb, 0);
 	if (!gem) {
 		DRM_INFO("gem is NULL!\n");
 		return -EINVAL;
 	}
-	phyaddr = gem->paddr;
+	phyaddr = gem->dma_addr;
 	#endif
 	plane_info->phy_addr[0] = phyaddr;
 	plane_info->fb_size[0] = (u32)fb_size[0];
@@ -1998,14 +2004,12 @@ static struct am_osd_plane *am_osd_plane_create(struct meson_drm *priv,
 					 afbc_modifier,
 					 type, const_plane_name);
 	} else {
-		priv->drm->mode_config.allow_fb_modifiers = false;
 		drm_universal_plane_init(priv->drm, plane, 1 << crtc_mask,
 					 &am_osd_plane_funs,
 					 formats_group,
 					 num_formats,
 					 NULL,
 					 type, const_plane_name);
-		priv->drm->mode_config.allow_fb_modifiers = true;
 	}
 	drm_plane_create_blend_mode_property(plane,
 				BIT(DRM_MODE_BLEND_PIXEL_NONE) |

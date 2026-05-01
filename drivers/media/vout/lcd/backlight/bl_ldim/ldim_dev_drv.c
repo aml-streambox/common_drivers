@@ -2202,7 +2202,7 @@ static int ldim_dev_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __exit ldim_dev_remove(struct platform_device *pdev)
+static void __exit ldim_dev_remove(struct platform_device *pdev)
 {
 	struct aml_ldim_driver_s *ldim_drv = aml_ldim_get_driver();
 
@@ -2213,8 +2213,6 @@ static int __exit ldim_dev_remove(struct platform_device *pdev)
 	/* free drvdata */
 	platform_set_drvdata(pdev, NULL);
 	LDIMPR("%s\n", __func__);
-
-	return 0;
 }
 
 static void ldim_dev_shutdown(struct platform_device *pdev)
@@ -2261,4 +2259,3 @@ void __exit ldim_dev_exit(void)
 //MODULE_DESCRIPTION("LDIM device Driver for LCD Backlight");
 //MODULE_LICENSE("GPL");
 //MODULE_AUTHOR("Amlogic, Inc.");
-

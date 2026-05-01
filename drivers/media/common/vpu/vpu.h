@@ -142,7 +142,7 @@ struct vpu_data_s {
 	int (*mempd_switch)(unsigned int vmod, int flag);
 	int (*mempd_get)(unsigned int vmod);
 	int (*clk_apply)(unsigned int vclk);
-	void (*clktree_init)(struct device *dev);
+	int (*clktree_init)(struct device *dev);
 };
 
 struct vpu_conf_s {
@@ -185,8 +185,8 @@ unsigned int get_vpu_clk_level_max_vmod(void);
 int vpu_clk_apply_dft(unsigned int clk_level);
 int vpu_clk_apply_c3(unsigned int clk_level);
 int set_vpu_clk(unsigned int vclk);
-void vpu_clktree_init_dft(struct device *dev);
-void vpu_clktree_init_c3(struct device *dev);
+int vpu_clktree_init_dft(struct device *dev);
+int vpu_clktree_init_c3(struct device *dev);
 
 void vpu_mem_pd_init_off(void);
 void vpu_module_init_config(void);

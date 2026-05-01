@@ -20,7 +20,7 @@
 #include "video_trace.h"
 #undef TRACE_INCLUDE_PATH
 #undef TRACE_INCLUDE_FILE
-#define TRACE_INCLUDE_PATH ../../common_drivers/drivers/media/video_sink
+#define TRACE_INCLUDE_PATH ../../../common_drivers-tvpro/drivers/media/video_sink
 #define TRACE_INCLUDE_FILE video_trace
 #include <trace/define_trace.h>
 
@@ -53,4 +53,3 @@ void vpp_trace_vframe(const char *name, void *vf, int arg1, int arg2, int id, in
 {
 	trace_vframe(name, vf, arg1, arg2, id, cnt);
 }
-

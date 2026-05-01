@@ -11,6 +11,7 @@ config AMLOGIC_POWER
 
 config AMLOGIC_POWER_EE
 	bool "Amlogic power domain ee support"
+	default n if AMLOGIC_ZAPPER_CUT
 	default y if (AMLOGIC_POWER=m || AMLOGIC_POWER=y)
 	depends on AMLOGIC_POWER
 	help
@@ -18,4 +19,3 @@ config AMLOGIC_POWER_EE
 
 
 source "$(COMMON_DRIVERS_DIR)/drivers/power/meson_pmic6b/Kconfig"
-

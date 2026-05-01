@@ -609,12 +609,10 @@ u32 pic_axis[4][4];
  * Utils APIs
  *********************************************************/
 #ifndef CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_DOLBYVISION
-#if IS_MODULE(CONFIG_AMLOGIC_MEDIA_VIDEO)
 bool is_amdv_enable(void)
 {
 	return false;
 }
-#endif
 
 bool is_amdv_on(void)
 {
@@ -9289,4 +9287,3 @@ module_param(debug_flag_3d, uint, 0664);
 
 MODULE_PARM_DESC(vd1_matrix, "\n vd1_matrix\n");
 module_param(vd1_matrix, uint, 0664);
-

@@ -807,7 +807,7 @@ static int meson_ee_pwrc_init_domain(struct platform_device *pdev,
 
 		strcat(buf, ",reset");
 		np = of_parse_phandle(pdev->dev.of_node, buf, 0);
-		dom->rstc = of_reset_control_array_get(np, true, false, true);
+		dom->rstc = of_reset_control_array_get_shared(np);
 		if (IS_ERR(dom->rstc))
 			return PTR_ERR(dom->rstc);
 	}

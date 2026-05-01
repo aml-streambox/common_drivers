@@ -30,8 +30,8 @@
 #include <drm/drm_flip_work.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_plane_helper.h>
-#include <drm/drm_gem_cma_helper.h>
-#include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_gem_dma_helper.h>
+#include <drm/drm_fb_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_rect.h>
 #include <drm/drm_fb_helper.h>
@@ -65,6 +65,51 @@ static struct platform_device *gp_dev;
 static unsigned long gem_mem_start, gem_mem_size;
 static struct resource osd_mem_res;
 static bool is_cma;
+
+#ifndef CONFIG_AMLOGIC_DRM_USE_ION
+static void am_meson_logo_fb_destroy(struct drm_framebuffer *fb)
+{
+	struct am_meson_fb *meson_fb = to_am_meson_fb(fb);
+
+	drm_framebuffer_cleanup(fb);
+	if (meson_fb->logo && meson_fb->logo->alloc_flag)
+		am_meson_free_logo_memory();
+	kfree(meson_fb);
+}
+
+static const struct drm_framebuffer_funcs am_meson_logo_fb_funcs = {
+	.destroy = am_meson_logo_fb_destroy,
+};
+
+struct drm_framebuffer *am_meson_fb_alloc(struct drm_device *dev,
+					 struct drm_mode_fb_cmd2 *mode_cmd,
+					 struct drm_gem_object *obj)
+{
+	const struct drm_format_info *info;
+	struct am_meson_fb *meson_fb;
+	int ret;
+
+	info = drm_get_format_info(dev, mode_cmd->pixel_format,
+				   mode_cmd->modifier[0]);
+	if (!info)
+		return ERR_PTR(-EINVAL);
+
+	meson_fb = kzalloc(sizeof(*meson_fb), GFP_KERNEL);
+	if (!meson_fb)
+		return ERR_PTR(-ENOMEM);
+
+	drm_helper_mode_fill_fb_struct(dev, &meson_fb->base, info, mode_cmd);
+
+	ret = drm_framebuffer_init(dev, &meson_fb->base,
+				 &am_meson_logo_fb_funcs);
+	if (ret) {
+		kfree(meson_fb);
+		return ERR_PTR(ret);
+	}
+
+	return &meson_fb->base;
+}
+#endif
 
 #ifdef MODULE
 MODULE_PARM_DESC(outputmode, "outputmode");
@@ -987,4 +1032,3 @@ static int __init gem_mem_setup(struct reserved_mem *rmem)
 }
 
 RESERVEDMEM_OF_DECLARE(gem, "amlogic, gem_memory", gem_mem_setup);
-

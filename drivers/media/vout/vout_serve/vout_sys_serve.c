@@ -84,6 +84,12 @@ static inline void __iomem *check_vs_reg(void)
 	return vs_reg_map->p;
 }
 
+static void vs_iounmap(void)
+{
+	kfree(vs_reg_map);
+	vs_reg_map = NULL;
+}
+
 unsigned int vs_reg_read(void)
 {
 	void __iomem *p;
@@ -154,17 +160,26 @@ static const struct of_device_id vs_match_table[] = {
 
 static int aml_vs_probe(struct platform_device *pdev)
 {
-	vs_ioremap(pdev);
+	int ret;
 
-	vout_register_client(&vout_sys_notifier);
+	ret = vs_ioremap(pdev);
+	if (ret)
+		return ret;
+
+	ret = vout_register_client(&vout_sys_notifier);
+	if (ret) {
+		vs_iounmap();
+		return ret;
+	}
 
 	VSPR("%s OK\n", __func__);
 	return 0;
 }
 
-static int aml_vs_remove(struct platform_device *pdev)
+static void aml_vs_remove(struct platform_device *pdev)
 {
-	return 0;
+	vout_unregister_client(&vout_sys_notifier);
+	vs_iounmap();
 }
 
 static struct platform_driver aml_vs_driver = {

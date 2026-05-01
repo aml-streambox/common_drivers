@@ -137,6 +137,10 @@ struct hdmitx_dev {
 	struct work_struct work_hdr_unmute;
 	struct delayed_work work_start_hdcp;
 	struct vrr_device_s hdmitx_vrr_dev;
+	bool irq_hpd_requested;
+	bool irq_vrr_requested;
+	bool irq_vsync_requested;
+	bool irq_emp_requested;
 	void *am_hdcp;
 	bool dw_hdcp22_cap;
 	int hdmi_init;

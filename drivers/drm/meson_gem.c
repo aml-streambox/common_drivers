@@ -6,7 +6,7 @@
 #include <drm/drmP.h>
 #include <drm/drm_gem.h>
 #include <drm/drm_vma_manager.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_gem_dma_helper.h>
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -631,7 +631,7 @@ static const struct drm_gem_object_funcs meson_gem_object_funcs = {
 	.vmap = meson_gem_prime_vmap,
 	.vunmap = meson_gem_prime_vunmap,
 	.mmap = meson_gem_prime_mmap,
-	.vm_ops = &drm_gem_cma_vm_ops,
+	.vm_ops = &drm_gem_dma_vm_ops,
 };
 
 struct am_meson_gem_object *am_meson_gem_object_create(struct drm_device *dev,
@@ -864,4 +864,3 @@ struct drm_gem_object *am_meson_drm_gem_prime_import(struct drm_device *dev,
 
 	return drm_gem_prime_import(dev, dmabuf);
 }
-

@@ -5,11 +5,15 @@ obj-$(CONFIG_AMLOGIC_DRM) = $(MESON_DRM_MODULE_NAME).o
 $(MESON_DRM_MODULE_NAME)-y = meson_drm_main.o
 
 ccflags-y += -I$(srctree)/$(src)/vpu-hw -I$(srctree)/$(src) \
+	     -I$(srctree)/$(COMMON_DRIVERS_DIR)/drivers/drm \
+	     -I$(srctree)/$(COMMON_DRIVERS_DIR)/drivers/drm/vpu-hw \
 	     -I$(srctree)/$(COMMON_DRIVERS_DIR)/drivers/media \
 	     -I$(srctree)/include
+ccflags-y += -include $(srctree)/$(COMMON_DRIVERS_DIR)/include/linux/amlogic/aml_kernel_compat.h
+ccflags-y += -Wno-error=incompatible-pointer-types
 
 ifeq ($(CONFIG_AMLOGIC_DRM_USE_ION),y)
-        $(MESON_DRM_MODULE_NAME)-y += meson_gem.o meson_fb.o
+	$(MESON_DRM_MODULE_NAME)-y += meson_gem.o meson_fb.o
 	ccflags-y += -I$(srctree)/$(COMMON_DRIVERS_DIR)/drivers/media/common/ion_dev
 endif
 

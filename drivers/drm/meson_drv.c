@@ -7,9 +7,11 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
+#include <linux/sched.h>
 #include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/component.h>
+#include <linux/err.h>
 #include <linux/init.h>
 #include <linux/amlogic/gki_module.h>
 
@@ -23,8 +25,8 @@
 #include <drm/drm_flip_work.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_plane_helper.h>
-#include <drm/drm_gem_cma_helper.h>
-#include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_gem_dma_helper.h>
+#include <drm/drm_fb_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_rect.h>
 #include <drm/drm_fb_helper.h>
@@ -93,15 +95,14 @@ static void am_meson_fb_output_poll_changed(struct drm_device *dev)
 }
 
 static const struct drm_mode_config_funcs meson_mode_config_funcs = {
-	.output_poll_changed = am_meson_fb_output_poll_changed,
 	.atomic_check        = drm_atomic_helper_check,
 	.atomic_commit       = meson_atomic_commit,
 #ifdef CONFIG_AMLOGIC_DRM_USE_ION
 	.fb_create           = am_meson_fb_create,
+	.get_format_info     = am_meson_get_format_info,
 #else
 	.fb_create           = drm_gem_fb_create,
 #endif
-	.get_format_info     = am_meson_get_format_info,
 
 };
 
@@ -137,11 +138,13 @@ int am_meson_get_vrr_range_ioctl(struct drm_device *dev,
 		break;
 #endif
 	default:
+		drm_connector_put(connector);
 		return -ENOENT;
 	}
 
 	if (!num_group) {
 		DRM_ERROR("get vrr error or not support qms\n");
+		drm_connector_put(connector);
 		return -EINVAL;
 	}
 
@@ -181,6 +184,8 @@ static const struct drm_ioctl_desc meson_ioctls[] = {
 
 DEFINE_DRM_GEM_FOPS(meson_drm_fops);
 
+static void meson_worker_thread_fini(struct meson_drm *priv);
+
 static struct drm_driver meson_driver = {
 	/*driver_features setting move to probe functions*/
 	.driver_features	= 0,
@@ -211,38 +216,30 @@ static struct drm_driver meson_driver = {
 	.prime_handle_to_fd	= drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle	= drm_gem_prime_fd_to_handle,
 	.gem_prime_import	= drm_gem_prime_import,
-	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table,
-	.gem_prime_mmap = drm_gem_prime_mmap,
+	.gem_prime_import_sg_table = drm_gem_dma_prime_import_sg_table,
 
 	/* GEM Ops */
-	.dumb_create		= drm_gem_cma_dumb_create,
-	.dumb_destroy		= drm_gem_dumb_destroy,
+	.dumb_create		= drm_gem_dma_dumb_create,
 	.dumb_map_offset	= drm_gem_dumb_map_offset,
-	.gem_free_object_unlocked = drm_gem_cma_free_object,
-	.gem_vm_ops		= &drm_gem_cma_vm_ops,
 #endif
 
 	/* Misc */
 	.fops			= &meson_drm_fops,
 	.name			= DRIVER_NAME,
 	.desc			= DRIVER_DESC,
-	.date			= "20220603",
 	.major			= MESON_VERSION_MAJOR,
 	.minor			= MESON_VERSION_MINOR,
-	.minor			= 0,
 };
 
 static int meson_worker_thread_init(struct meson_drm *priv,
 				    unsigned int num_crtcs)
 {
-	int i, ret;
-	struct sched_param param;
+	int i;
 	struct kthread_worker *worker;
 	char thread_name[16];
 	struct meson_drm_thread *drm_thread;
 	struct drm_device *drm = priv->drm;
-
-	param.sched_priority = 16;
+	int ret;
 
 	for (i = 0; i < num_crtcs; i++) {
 		drm_thread = &priv->commit_thread[i];
@@ -253,17 +250,35 @@ static int meson_worker_thread_init(struct meson_drm *priv,
 		drm_thread->thread = kthread_run(kthread_worker_fn,
 						 worker, thread_name);
 		if (IS_ERR(drm_thread->thread)) {
+			ret = PTR_ERR(drm_thread->thread);
 			DRM_ERROR("failed to create commit thread\n");
-			priv->commit_thread[0].thread = NULL;
-			return -1;
+			drm_thread->thread = NULL;
+			meson_worker_thread_fini(priv);
+			return ret;
 		}
 
-		ret = sched_setscheduler(drm_thread->thread, SCHED_FIFO, &param);
-		if (ret)
-			DRM_ERROR("failed to set priority\n");
+		sched_set_fifo_low(drm_thread->thread);
 	}
 
 	return 0;
+}
+
+static void meson_worker_thread_fini(struct meson_drm *priv)
+{
+	struct meson_drm_thread *drm_thread;
+	int i;
+
+	if (!priv)
+		return;
+
+	for (i = 0; i < priv->num_crtcs; i++) {
+		drm_thread = &priv->commit_thread[i];
+		if (drm_thread->thread && !IS_ERR(drm_thread->thread)) {
+			kthread_flush_worker(&drm_thread->worker);
+			kthread_stop(drm_thread->thread);
+		}
+		drm_thread->thread = NULL;
+	}
 }
 
 static void meson_parse_max_config(struct device_node *node, u32 *max_width,
@@ -294,8 +309,8 @@ static int am_meson_drm_bind(struct device *dev)
 		DRIVER_MODESET | DRIVER_ATOMIC | DRIVER_RENDER;
 
 	drm = drm_dev_alloc(&meson_driver, dev);
-	if (!drm)
-		return -ENOMEM;
+	if (IS_ERR(drm))
+		return PTR_ERR(drm);
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv) {
@@ -323,7 +338,11 @@ static int am_meson_drm_bind(struct device *dev)
 
 	drm_mode_config_init(drm);
 
-	vpu_topology_init(pdev, priv);
+	ret = vpu_topology_init(pdev, priv);
+	if (ret) {
+		dev_err(dev, "failed to initialize VPU topology: %d\n", ret);
+		goto err_gem;
+	}
 
 	/* init meson config before bind other component,
 	 * other component may use it.
@@ -333,7 +352,7 @@ static int am_meson_drm_bind(struct device *dev)
 	drm->mode_config.max_height = max_height;
 	drm->mode_config.funcs = &meson_mode_config_funcs;
 	drm->mode_config.helper_private	= &meson_mode_config_helpers;
-	drm->mode_config.allow_fb_modifiers = true;
+	drm->mode_config.fb_modifiers_not_supported = false;
 
 	if (recovery_mode)
 		priv->recovery_mode = true;
@@ -346,7 +365,7 @@ static int am_meson_drm_bind(struct device *dev)
 	/* Writeback should be registered after HDMI registration. */
 	ret = am_meson_writeback_create(drm);
 	if (ret)
-		goto err_gem;
+		goto err_unbind_all;
 	DRM_DEBUG("mode_config crtc number:%d\n", drm->mode_config.num_crtc);
 
 	ret = meson_worker_thread_init(priv, drm->mode_config.num_crtc);
@@ -382,6 +401,7 @@ static int am_meson_drm_bind(struct device *dev)
 	ret = drm_dev_register(drm, 0);
 	if (ret)
 		goto err_fbdev_fini;
+	drm_helper_hpd_irq_event(drm);
 	ret = meson_drm_sysfs_register(drm);
 	if (ret)
 		goto err_drm_dev_unregister;
@@ -399,6 +419,8 @@ err_poll_fini:
 	drm_kms_helper_poll_fini(drm);
 	priv->irq_enabled = false;
 err_unbind_all:
+	drm_atomic_helper_shutdown(drm);
+	meson_worker_thread_fini(priv);
 	component_unbind_all(dev, drm);
 err_gem:
 	drm_mode_config_cleanup(drm);
@@ -416,8 +438,13 @@ err_free1:
 
 static void am_meson_drm_unbind(struct device *dev)
 {
-	struct drm_device *drm = dev_get_drvdata(dev);
-	struct meson_drm *priv = drm->dev_private;
+	struct meson_drm *priv = dev_get_drvdata(dev);
+	struct drm_device *drm;
+
+	if (!priv || !priv->drm)
+		return;
+
+	drm = priv->drm;
 
 	meson_drm_sysfs_unregister(drm);
 	drm_dev_unregister(drm);
@@ -425,7 +452,9 @@ static void am_meson_drm_unbind(struct device *dev)
 	am_meson_drm_fbdev_fini(drm);
 #endif
 	drm_kms_helper_poll_fini(drm);
+	drm_atomic_helper_shutdown(drm);
 	priv->irq_enabled = false;
+	meson_worker_thread_fini(priv);
 	component_unbind_all(dev, drm);
 	drm_mode_config_cleanup(drm);
 #ifdef CONFIG_AMLOGIC_DRM_USE_ION
@@ -434,13 +463,6 @@ static void am_meson_drm_unbind(struct device *dev)
 	drm->dev_private = NULL;
 	dev_set_drvdata(dev, NULL);
 	drm_dev_put(drm);
-}
-
-static int compare_of(struct device *dev, void *data)
-{
-	struct device_node *np = data;
-
-	return dev->of_node == np;
 }
 
 static void am_meson_add_endpoints(struct device *dev,
@@ -458,8 +480,8 @@ static void am_meson_add_endpoints(struct device *dev,
 			of_node_put(remote);
 			continue;
 		}
-		component_match_add(dev, match, compare_of, remote);
-		of_node_put(remote);
+		component_match_add_release(dev, match, component_release_of,
+					    component_compare_of, remote);
 	}
 }
 
@@ -505,8 +527,8 @@ static int am_meson_drv_probe_prune(struct platform_device *pdev)
 	meson_driver.driver_features = DRIVER_GEM;
 
 	drm = drm_dev_alloc(&meson_driver, dev);
-	if (!drm)
-		return -ENOMEM;
+	if (IS_ERR(drm))
+		return PTR_ERR(drm);
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv) {
@@ -543,19 +565,24 @@ err_free1:
 	return ret;
 }
 
-static int am_meson_drv_remove_prune(struct platform_device *pdev)
+static void am_meson_drv_remove_prune(struct platform_device *pdev)
 {
-	struct drm_device *drm = platform_get_drvdata(pdev);
+	struct meson_drm *priv = platform_get_drvdata(pdev);
+	struct drm_device *drm;
+
+	if (!priv || !priv->drm)
+		return;
+
+	drm = priv->drm;
 
 	drm_dev_unregister(drm);
+	drm_atomic_helper_shutdown(drm);
 #ifdef CONFIG_AMLOGIC_DRM_USE_ION
 	am_meson_gem_cleanup(drm->dev_private);
 #endif
 	drm->dev_private = NULL;
 	platform_set_drvdata(pdev, NULL);
 	drm_dev_put(drm);
-
-	return 0;
 }
 
 static int am_meson_drv_probe(struct platform_device *pdev)
@@ -587,7 +614,9 @@ static int am_meson_drv_probe(struct platform_device *pdev)
 			continue;
 		}
 
-		component_match_add(dev, &match, compare_of, port->parent);
+		component_match_add_release(dev, &match, component_release_of,
+					    component_compare_of,
+					    of_node_get(port->parent));
 		of_node_put(port);
 	}
 
@@ -624,13 +653,14 @@ static int am_meson_drv_probe(struct platform_device *pdev)
 	return component_master_add_with_match(dev, &am_meson_drm_ops, match);
 }
 
-static int am_meson_drv_remove(struct platform_device *pdev)
+static void am_meson_drv_remove(struct platform_device *pdev)
 {
-	if (am_meson_drv_use_osd())
-		return am_meson_drv_remove_prune(pdev);
+	if (am_meson_drv_use_osd()) {
+		am_meson_drv_remove_prune(pdev);
+		return;
+	}
 
 	component_master_del(&pdev->dev, &am_meson_drm_ops);
-	return 0;
 }
 
 static const struct of_device_id am_meson_drm_dt_match[] = {
@@ -733,10 +763,8 @@ static void am_meson_drv_shutdown(struct platform_device *pdev)
 	struct drm_device *dev;
 	struct drm_crtc *crtc;
 	struct am_meson_crtc *amcrtc;
-	struct meson_drm_thread *drm_thread;
 	struct meson_drm *priv;
 	int ret;
-	int i;
 
 	DRM_INFO("%s: in\n", __func__);
 	priv = dev_get_drvdata(&pdev->dev);
@@ -767,14 +795,7 @@ static void am_meson_drv_shutdown(struct platform_device *pdev)
 
 	/* flush kworker of commit thread and stop the thread */
 	DRM_INFO("%s: try to flush worker\n", __func__);
-	for (i = 0; i < priv->num_crtcs; i++) {
-		drm_thread = &priv->commit_thread[i];
-		if (drm_thread->thread) {
-			kthread_flush_worker(&drm_thread->worker);
-			kthread_stop(drm_thread->thread);
-			drm_thread->thread = NULL;
-		}
-	}
+	meson_worker_thread_fini(priv);
 
 	DRM_INFO("%s: done\n", __func__);
 }

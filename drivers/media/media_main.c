@@ -20,6 +20,34 @@
 #include <linux/amlogic/gki_module.h>
 #include "media_main.h"
 
+#ifndef CONFIG_AMLOGIC_MEDIA_VIDEO
+void set_output_mute(bool on)
+{
+}
+
+int get_output_mute(void)
+{
+	return 0;
+}
+#endif
+
+#ifndef CONFIG_AMLOGIC_EFUSE
+u32 efuse_obj_read(u32 obj_id, char *name, u8 *buff, u32 *size)
+{
+	return -ENODEV;
+}
+#endif
+
+unsigned int meson_clk_measure(unsigned int id)
+{
+	return 0;
+}
+
+unsigned int meson_clk_measure_with_precision(unsigned int id, unsigned int precision)
+{
+	return meson_clk_measure(id);
+}
+
 //#define DEBUG
 #define call_sub_init(func) \
 { \
@@ -164,4 +192,5 @@ static void __exit media_main_exit(void)
 }
 module_init(media_main_init);
 module_exit(media_main_exit);
+MODULE_DESCRIPTION("Amlogic media support module");
 MODULE_LICENSE("GPL v2");

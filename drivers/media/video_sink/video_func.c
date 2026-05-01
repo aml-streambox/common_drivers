@@ -31,6 +31,7 @@
 #include <linux/poll.h>
 #include <linux/clk.h>
 #include <linux/debugfs.h>
+#include <linux/delay.h>
 #include <linux/amlogic/media/canvas/canvas.h>
 #include <linux/amlogic/media/canvas/canvas_mgr.h>
 #include <linux/dma-mapping.h>
@@ -6531,4 +6532,3 @@ module_param(pre_vsync_count, uint, 0664);
 
 MODULE_PARM_DESC(stop_force_dmc, "\n stop_force_dmc\n");
 module_param(stop_force_dmc, uint, 0664);
-

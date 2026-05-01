@@ -14311,7 +14311,7 @@ fail_create_wq:
 #endif
 }
 
-static int __exit aml_vecm_remove(struct platform_device *pdev)
+static void aml_vecm_remove(struct platform_device *pdev)
 {
 	struct amvecm_dev_s *devp = &amvecm_dev;
 
@@ -14355,7 +14355,6 @@ static int __exit aml_vecm_remove(struct platform_device *pdev)
 	lc_free();
 #endif
 	pr_info("[amvecm.] : amvecm_exit.\n");
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -14527,7 +14526,7 @@ static struct platform_driver aml_vecm_driver = {
 	},
 	.probe = aml_vecm_probe,
 	.shutdown = amvecm_shutdown,
-	.remove = __exit_p(aml_vecm_remove),
+	.remove = aml_vecm_remove,
 };
 
 int __init aml_vecm_init(void)
@@ -14554,4 +14553,3 @@ void __exit aml_vecm_exit(void)
 //MODULE_VERSION(AMVECM_VER);
 //MODULE_DESCRIPTION("AMLOGIC amvecm driver");
 //MODULE_LICENSE("GPL");
-

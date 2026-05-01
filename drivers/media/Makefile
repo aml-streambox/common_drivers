@@ -2,6 +2,8 @@
 MEDIA_MODULE_NAME = aml_media
 obj-$(CONFIG_AMLOGIC_MEDIA_MODULE) = $(MEDIA_MODULE_NAME).o
 $(MEDIA_MODULE_NAME)-y = media_main.o
+ccflags-y += -include $(srctree)/$(COMMON_DRIVERS_DIR)/include/linux/amlogic/aml_kernel_compat.h
+ccflags-y += -Wno-error=incompatible-pointer-types
 include $(COMMON_DRIVERS_DIR)/drivers/media/common/Makefile
 include $(COMMON_DRIVERS_DIR)/drivers/media/vout/Makefile
 include $(COMMON_DRIVERS_DIR)/drivers/media/video_sink/Makefile

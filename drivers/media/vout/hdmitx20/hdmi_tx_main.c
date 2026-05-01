@@ -3946,7 +3946,7 @@ static int amhdmitx_probe(struct platform_device *pdev)
 	return r;
 }
 
-static int amhdmitx_remove(struct platform_device *pdev)
+static void amhdmitx_remove(struct platform_device *pdev)
 {
 	struct hdmitx_dev *hdev = dev_get_drvdata(&pdev->dev);
 	struct device *dev = hdev->hdtx_dev;
@@ -4012,7 +4012,6 @@ static int amhdmitx_remove(struct platform_device *pdev)
 	unregister_chrdev_region(hdev->hdmitx_id, HDMI_TX_COUNT);
 
 	hdmitx_common_destroy(&hdev->tx_comm);
-	return 0;
 }
 
 static void _amhdmitx_suspend(struct hdmitx_dev *hdev)

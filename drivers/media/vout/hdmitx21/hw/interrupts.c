@@ -277,7 +277,8 @@ void hdmitx_top_intr_handler(struct work_struct *work)
 			ktime_get_real_ts64(&kts);
 			rtc_time64_to_tm(kts.tv_sec, &tm);
 			HDMITX_INFO("UTC+0 %ptRd %ptRt HPD %s\n", &tm, &tm,
-				gpio_get_value(hdev->tx_hw.base.hdmitx_gpios_hpd) ? "HIGH" : "LOW");
+				gpio_get_value_cansleep(hdev->tx_hw.base.hdmitx_gpios_hpd) ?
+				"HIGH" : "LOW");
 		}
 		if ((dat_top & 0x6) && hdev->tx_hw.base.debug_hpd_lock) {
 			HDMITX_INFO("HDMI hpd locked\n");
@@ -471,35 +472,81 @@ static irqreturn_t emp_vsync_intr_handler(int irq, void *dev)
 }
 #endif
 
-void hdmitx_setupirqs(struct hdmitx_dev *phdev)
+void hdmitx_freeirqs(struct hdmitx_dev *phdev)
+{
+	if (!phdev || phdev->pxp_mode)
+		return;
+
+#ifdef CONFIG_AMLOGIC_DSC
+	if (phdev->irq_emp_requested) {
+		free_irq(phdev->irq_vrr_vsync, (void *)phdev);
+		phdev->irq_emp_requested = false;
+	}
+#endif
+	if (phdev->irq_vsync_requested) {
+		free_irq(phdev->irq_vrr_vsync, (void *)phdev);
+		phdev->irq_vsync_requested = false;
+	}
+#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+	if (phdev->irq_vrr_requested) {
+		free_irq(phdev->irq_vrr_vsync, (void *)phdev);
+		phdev->irq_vrr_requested = false;
+	}
+#endif
+	if (phdev->irq_hpd_requested) {
+		free_irq(phdev->irq_hpd, (void *)phdev);
+		phdev->irq_hpd_requested = false;
+	}
+}
+
+int hdmitx_setupirqs(struct hdmitx_dev *phdev)
 {
 	int r;
 
 	if (phdev->pxp_mode)
-		return;
+		return 0;
 
 	hdmitx21_wr_reg(HDMITX_TOP_INTR_STAT_CLR, 0x7);
 	r = request_irq(phdev->irq_hpd, &intr_handler,
 			IRQF_SHARED, "hdmitx",
 			(void *)phdev);
+	if (r) {
+		HDMITX_INFO(SYS "can't request hpd irq\n");
+		return r;
+	}
+	phdev->irq_hpd_requested = true;
 
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	r = request_irq(phdev->irq_vrr_vsync, &vrr_vsync_intr_handler,
 			IRQF_SHARED, "hdmitx_vrr_vsync",
 			(void *)phdev);
-	if (r != 0)
+	if (r != 0) {
 		HDMITX_INFO(SYS "can't request vrr_vsync irq\n");
+		goto err_free_irqs;
+	}
+	phdev->irq_vrr_requested = true;
 #endif
 	r = request_irq(phdev->irq_vrr_vsync, &vsync_intr_handler,
 			IRQF_SHARED, "hdmi_vsync",
 			(void *)phdev);
-	if (r != 0)
+	if (r != 0) {
 		HDMITX_INFO(SYS "can't request hdmi_vsync irq\n");
+		goto err_free_irqs;
+	}
+	phdev->irq_vsync_requested = true;
 #ifdef CONFIG_AMLOGIC_DSC
 	r = request_irq(phdev->irq_vrr_vsync, &emp_vsync_intr_handler,
 			IRQF_SHARED, "hdmitx_emp_vsync",
 			(void *)phdev);
-	if (r != 0)
+	if (r != 0) {
 		HDMITX_INFO(SYS "can't request emp_vsync irq\n");
+		goto err_free_irqs;
+	}
+	phdev->irq_emp_requested = true;
 #endif
+	return 0;
+
+err_free_irqs:
+	hdmitx_freeirqs(phdev);
+	return r;
 }

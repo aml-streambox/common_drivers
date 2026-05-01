@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config DRM_MESON_T7_VENDOR
+	tristate "Amlogic T7 vendor display pipeline port"
+	depends on DRM && OF && (ARM64 || COMPILE_TEST)
+	depends on ARCH_MESON || COMPILE_TEST
+	select DRM_CLIENT_SELECTION
+	select DRM_KMS_HELPER
+	select DRM_DISPLAY_HELPER
+	select DRM_GEM_DMA_HELPER
+	select AMLOGIC_COMMON_CLK_T7_DISPLAY
+	select REGMAP_MMIO
+	select VIDEOMODE_HELPERS
+	help
+	  Experimental forward-port scaffold for the Amlogic T7/T7C vendor
+	  display pipeline used by TVPRO and Khadas VIM4.
+
+	  This option is intentionally disabled by default. The port is expected
+	  to grow in small, audited layers: DRM/VPU pipeline, minimal vout and
+	  HDMI TX support, then optional features only after basic HDMI scanout
+	  works. It must not pull in unrelated camera, ISP, NPU, DVB, HDMI RX,
+	  video codec, memory-debug, or Android/GKI infrastructure implicitly.
+
+if DRM_MESON_T7_VENDOR
+
+config DRM_MESON_T7_VENDOR_VPU
+	bool "Amlogic T7 vendor VPU/OSD pipeline support"
+	default y
+	help
+	  Build the selected T7 VPU, OSD, AFBC, scaler, blend, and postblend
+	  display-pipeline pieces required by the vendor DRM scanout path.
+
+config DRM_MESON_T7_VENDOR_VOUT
+	bool "Amlogic T7 vendor vout service support"
+	default y
+	help
+	  Build the minimal vout service and notifier layer required by the
+	  vendor DRM HDMI mode-setting path.
+
+config DRM_MESON_T7_VENDOR_HDMITX
+	bool "Amlogic T7 vendor HDMI TX support"
+	default y
+	help
+	  Build the selected HDMITX21 common and T7 hardware pieces required for
+	  basic HDMI connector, EDID/DDC, and mode-setting support.
+
+config DRM_MESON_T7_VENDOR_VRR
+	bool "Amlogic T7 vendor VRR support"
+	default n
+	help
+	  Build vendor VRR integration after fixed-mode HDMI scanout is stable.
+	  Leave this disabled for the first display milestone.
+
+endif

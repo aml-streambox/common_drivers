@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/device.h>
+#include <linux/err.h>
 #include <linux/mm.h>
 #include <linux/major.h>
 #include <linux/platform_device.h>
@@ -30,6 +31,7 @@
 #include <linux/irq.h>
 #include <linux/io.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
 #include <linux/of_gpio.h>
@@ -3641,6 +3643,77 @@ static DEVICE_ATTR_RO(clkmsr);
 static DEVICE_ATTR_RO(hdmitx_pkt_dump);
 static DEVICE_ATTR_RO(hdmitx_basic_config);
 
+static struct device_attribute *hdmitx21_device_attrs[] = {
+	&dev_attr_disp_mode,
+	&dev_attr_vid_mute,
+	&dev_attr_config,
+#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+	&dev_attr_vrr_cap,
+	&dev_attr_vrr_mode,
+#endif
+	&dev_attr_lipsync_cap,
+	&dev_attr_hdmi_hdr_status,
+	&dev_attr_aud_mute,
+	&dev_attr_sspll,
+	&dev_attr_rxsense_policy,
+	&dev_attr_rxsense_state,
+	&dev_attr_cedst_policy,
+	&dev_attr_cedst_count,
+	&dev_attr_hdcp_mode,
+	&dev_attr_hdcp_ver,
+	&dev_attr_hdcp_type_policy,
+	&dev_attr_hdcp_lstore,
+	&dev_attr_ready,
+	&dev_attr_ll_mode,
+	&dev_attr_ll_user_mode,
+	&dev_attr_aon_output,
+	&dev_attr_def_stream_type,
+	&dev_attr_propagate_stream_type,
+	&dev_attr_cont_smng_method,
+	&dev_attr_frl_rate,
+	&dev_attr_dsc_en,
+	&dev_attr_dsc_policy,
+	&dev_attr_hdr_priority_mode,
+	&dev_attr_is_passthrough_switch,
+	&dev_attr_is_hdcp_cts_te,
+	&dev_attr_need_filter_hdcp_off,
+	&dev_attr_filter_hdcp_off_period,
+	&dev_attr_not_restart_hdcp,
+	&dev_attr_hdr_mute_frame,
+	&dev_attr_clkmsr,
+	&dev_attr_hdmitx_pkt_dump,
+	&dev_attr_hdmitx_basic_config,
+};
+
+static int hdmitx21_create_device_files(struct device *dev)
+{
+	int i, ret;
+
+	for (i = 0; i < ARRAY_SIZE(hdmitx21_device_attrs); i++) {
+		ret = device_create_file(dev, hdmitx21_device_attrs[i]);
+		if (ret)
+			goto err_remove_files;
+	}
+
+	return 0;
+
+err_remove_files:
+	while (i--)
+		device_remove_file(dev, hdmitx21_device_attrs[i]);
+	return ret;
+}
+
+static void hdmitx21_remove_device_files(struct device *dev)
+{
+	int i;
+
+	if (!dev)
+		return;
+
+	for (i = ARRAY_SIZE(hdmitx21_device_attrs) - 1; i >= 0; i--)
+		device_remove_file(dev, hdmitx21_device_attrs[i]);
+}
+
 static int hdmitx21_pre_enable_mode(struct hdmitx_common *tx_comm, struct hdmi_format_para *para)
 {
 	struct hdmitx_dev *hdev = to_hdmitx21_dev(tx_comm);
@@ -4316,16 +4389,23 @@ static int amhdmitx_get_dt_info(struct platform_device *pdev, struct hdmitx_dev 
 	/* pinmux set */
 	if (pdev->dev.of_node) {
 		pin = devm_pinctrl_get(&pdev->dev);
-		if (!pin) {
-			HDMITX_INFO("get pin control fail\n");
-			return -1;
-		}
+		if (IS_ERR(pin))
+			return dev_err_probe(&pdev->dev, PTR_ERR(pin),
+				"get pin control fail\n");
 
 		hdev->pinctrl_default = pinctrl_lookup_state(pin, "hdmitx_hpd");
-		pinctrl_select_state(pin, hdev->pinctrl_default);
+		if (IS_ERR(hdev->pinctrl_default))
+			return PTR_ERR(hdev->pinctrl_default);
+		ret = pinctrl_select_state(pin, hdev->pinctrl_default);
+		if (ret)
+			return ret;
 
 		hdev->pinctrl_i2c = pinctrl_lookup_state(pin, "hdmitx_ddc");
-		pinctrl_select_state(pin, hdev->pinctrl_i2c);
+		if (IS_ERR(hdev->pinctrl_i2c))
+			return PTR_ERR(hdev->pinctrl_i2c);
+		ret = pinctrl_select_state(pin, hdev->pinctrl_i2c);
+		if (ret)
+			return ret;
 		/* rx_pr("hdmirx: pinmux:%p, name:%s\n", */
 		/* pin, pin_name); */
 		HDMITX_INFO("get pin control\n");
@@ -4339,16 +4419,19 @@ static int amhdmitx_get_dt_info(struct platform_device *pdev, struct hdmitx_dev 
 	tx_hw_base = &hdev->tx_hw.base;
 	tx_hw_base->hdmitx_gpios_hpd = of_get_named_gpio_flags(pdev->dev.of_node,
 		"hdmitx-gpios-hpd", 0, NULL);
-	if (tx_hw_base->hdmitx_gpios_hpd == -EPROBE_DEFER)
-		HDMITX_ERROR("get hdmitx-gpios-hpd error\n");
+	if (tx_hw_base->hdmitx_gpios_hpd < 0)
+		return dev_err_probe(&pdev->dev, tx_hw_base->hdmitx_gpios_hpd,
+			"get hdmitx-gpios-hpd error\n");
 	tx_hw_base->hdmitx_gpios_scl = of_get_named_gpio_flags(pdev->dev.of_node,
 		"hdmitx-gpios-scl", 0, NULL);
-	if (tx_hw_base->hdmitx_gpios_scl == -EPROBE_DEFER)
-		HDMITX_ERROR("get hdmitx-gpios-scl error\n");
+	if (tx_hw_base->hdmitx_gpios_scl < 0)
+		return dev_err_probe(&pdev->dev, tx_hw_base->hdmitx_gpios_scl,
+			"get hdmitx-gpios-scl error\n");
 	tx_hw_base->hdmitx_gpios_sda = of_get_named_gpio_flags(pdev->dev.of_node,
 		"hdmitx-gpios-sda", 0, NULL);
-	if (tx_hw_base->hdmitx_gpios_sda == -EPROBE_DEFER)
-		HDMITX_ERROR("get hdmitx-gpios-sda error\n");
+	if (tx_hw_base->hdmitx_gpios_sda < 0)
+		return dev_err_probe(&pdev->dev, tx_hw_base->hdmitx_gpios_sda,
+			"get hdmitx-gpios-sda error\n");
 
 #ifdef CONFIG_OF
 	if (pdev->dev.of_node) {
@@ -4472,14 +4555,20 @@ static int amhdmitx_get_dt_info(struct platform_device *pdev, struct hdmitx_dev 
 		if (ret == 0) {
 			phandler = val;
 			init_data = of_find_node_by_phandle(phandler);
-			if (!init_data)
+			if (!init_data) {
 				HDMITX_INFO("not find device node\n");
+				return -ENODEV;
+			}
 			hdev->config_data.vend_data =
 			kzalloc(sizeof(struct vendor_info_data), GFP_KERNEL);
-			if (!(hdev->config_data.vend_data))
+			if (!(hdev->config_data.vend_data)) {
 				HDMITX_INFO("not allocate memory\n");
+				of_node_put(init_data);
+				return -ENOMEM;
+			}
 			ret = get_dt_vend_init_data
 			(init_data, hdev->config_data.vend_data);
+			of_node_put(init_data);
 			if (ret)
 				HDMITX_INFO("not find vend_init_data\n");
 		}
@@ -4491,22 +4580,26 @@ static int amhdmitx_get_dt_info(struct platform_device *pdev, struct hdmitx_dev 
 		if (ret == 0) {
 			phandler = val;
 			init_data = of_find_node_by_phandle(phandler);
-			if (!init_data)
+			if (!init_data) {
 				HDMITX_INFO("not find device node\n");
+				return -ENODEV;
+			}
 			hdev->config_data.pwr_ctl = kzalloc((sizeof(struct hdmi_pwr_ctl)) *
 				HDMI_TX_PWR_CTRL_NUM, GFP_KERNEL);
-			if (!hdev->config_data.pwr_ctl)
+			if (!hdev->config_data.pwr_ctl) {
 				HDMITX_INFO("can not get pwr_ctl mem\n");
-			else
-				memset(hdev->config_data.pwr_ctl, 0, sizeof(struct hdmi_pwr_ctl));
-			if (ret)
-				HDMITX_INFO("not find pwr_ctl\n");
+				of_node_put(init_data);
+				return -ENOMEM;
+			}
+			of_node_put(init_data);
 		}
 
 		/* Get reg information */
 		ret = hdmitx21_init_reg_map(pdev);
-		if (ret < 0)
+		if (ret < 0) {
 			HDMITX_ERROR("ERROR: hdmitx io_remap fail!\n");
+			return ret;
+		}
 	}
 
 #else
@@ -4519,72 +4612,71 @@ static int amhdmitx_get_dt_info(struct platform_device *pdev, struct hdmitx_dev 
 		}
 #endif
 	hdev->irq_hpd = platform_get_irq_byname(pdev, "hdmitx_hpd");
-	if (hdev->irq_hpd == -ENXIO) {
-		HDMITX_ERROR("%s: ERROR: hdmitx hpd irq No not found\n",
-		       __func__);
-			return -ENXIO;
+	if (hdev->irq_hpd < 0) {
+		HDMITX_ERROR("%s: ERROR: hdmitx hpd irq No not found: %d\n",
+		       __func__, hdev->irq_hpd);
+		return hdev->irq_hpd;
 	}
 	HDMITX_INFO("hpd irq = %d\n", hdev->irq_hpd);
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	tx_vrr_params_init();
+#endif
 	hdev->irq_vrr_vsync = platform_get_irq_byname(pdev, "vrr_vsync");
-	if (hdev->irq_vrr_vsync == -ENXIO) {
-		HDMITX_ERROR("%s: ERROR: hdmitx vrr_vsync irq No not found\n",
-		       __func__);
-			return -ENXIO;
+	if (hdev->irq_vrr_vsync < 0) {
+		HDMITX_ERROR("%s: ERROR: hdmitx vrr_vsync irq No not found: %d\n",
+		       __func__, hdev->irq_vrr_vsync);
+		return hdev->irq_vrr_vsync;
 	}
 	HDMITX_INFO("vrr vsync irq = %d\n", hdev->irq_vrr_vsync);
-#endif
 	ret = of_property_read_u32(pdev->dev.of_node, "arc_rx_en", &val);
 	if (!ret)
 		hdev->arc_rx_en = val;
 	else
 		hdev->arc_rx_en = 0;
-	return ret;
+	return 0;
 }
 
 /*
  * amhdmitx_clktree_probe
  * get clktree info from dts
  */
-static void amhdmitx_clktree_probe(struct device *hdmitx_dev, struct hdmitx_dev *hdev)
+static int amhdmitx_clktree_probe(struct device *hdmitx_dev, struct hdmitx_dev *hdev)
 {
-	struct clk *hdmi_clk_vapb, *hdmi_clk_vpu;
 	struct clk *venci_top_gate, *venci_0_gate, *venci_1_gate;
 
-	hdmi_clk_vapb = devm_clk_get(hdmitx_dev, "hdmi_vapb_clk");
-	if (IS_ERR(hdmi_clk_vapb)) {
-		pr_warn("vapb_clk failed to probe\n");
-	} else {
-		hdev->hdmitx_clk_tree.hdmi_clk_vapb = hdmi_clk_vapb;
-		clk_prepare_enable(hdev->hdmitx_clk_tree.hdmi_clk_vapb);
-	}
+	hdev->hdmitx_clk_tree.hdmi_clk_vapb =
+		devm_clk_get_enabled(hdmitx_dev, "hdmi_vapb_clk");
+	if (IS_ERR(hdev->hdmitx_clk_tree.hdmi_clk_vapb))
+		return dev_err_probe(hdmitx_dev,
+			PTR_ERR(hdev->hdmitx_clk_tree.hdmi_clk_vapb),
+			"failed to enable hdmi_vapb_clk\n");
 
-	hdmi_clk_vpu = devm_clk_get(hdmitx_dev, "hdmi_vpu_clk");
-	if (IS_ERR(hdmi_clk_vpu)) {
-		pr_warn("vpu_clk failed to probe\n");
-	} else {
-		hdev->hdmitx_clk_tree.hdmi_clk_vpu = hdmi_clk_vpu;
-		clk_prepare_enable(hdev->hdmitx_clk_tree.hdmi_clk_vpu);
-	}
+	hdev->hdmitx_clk_tree.hdmi_clk_vpu =
+		devm_clk_get_enabled(hdmitx_dev, "hdmi_vpu_clk");
+	if (IS_ERR(hdev->hdmitx_clk_tree.hdmi_clk_vpu))
+		return dev_err_probe(hdmitx_dev,
+			PTR_ERR(hdev->hdmitx_clk_tree.hdmi_clk_vpu),
+			"failed to enable hdmi_vpu_clk\n");
 
-	venci_top_gate = devm_clk_get(hdmitx_dev, "venci_top_gate");
+	venci_top_gate = devm_clk_get_optional(hdmitx_dev, "venci_top_gate");
 	if (IS_ERR(venci_top_gate))
-		pr_warn("venci_top_gate failed to probe\n");
-	else
-		hdev->hdmitx_clk_tree.venci_top_gate = venci_top_gate;
+		return dev_err_probe(hdmitx_dev, PTR_ERR(venci_top_gate),
+			"failed to get venci_top_gate\n");
+	hdev->hdmitx_clk_tree.venci_top_gate = venci_top_gate;
 
-	venci_0_gate = devm_clk_get(hdmitx_dev, "venci_0_gate");
+	venci_0_gate = devm_clk_get_optional(hdmitx_dev, "venci_0_gate");
 	if (IS_ERR(venci_0_gate))
-		pr_warn("venci_0_gate failed to probe\n");
-	else
-		hdev->hdmitx_clk_tree.venci_0_gate = venci_0_gate;
+		return dev_err_probe(hdmitx_dev, PTR_ERR(venci_0_gate),
+			"failed to get venci_0_gate\n");
+	hdev->hdmitx_clk_tree.venci_0_gate = venci_0_gate;
 
-	venci_1_gate = devm_clk_get(hdmitx_dev, "venci_1_gate");
+	venci_1_gate = devm_clk_get_optional(hdmitx_dev, "venci_1_gate");
 	if (IS_ERR(venci_1_gate))
-		pr_warn("venci_1_gate failed to probe\n");
-	else
-		hdev->hdmitx_clk_tree.venci_1_gate = venci_1_gate;
+		return dev_err_probe(hdmitx_dev, PTR_ERR(venci_1_gate),
+			"failed to get venci_1_gate\n");
+	hdev->hdmitx_clk_tree.venci_1_gate = venci_1_gate;
+
+	return 0;
 }
 
 void amhdmitx21_vpu_dev_register(struct hdmitx_dev *hdev)
@@ -4615,7 +4707,10 @@ static int hdmitx21_status_check(void *data)
 {
 	int clk[3];
 	int idx[3];
-	struct hdmitx_dev *hdev = get_hdmitx21_device();
+	struct hdmitx_dev *hdev = data;
+
+	if (!hdev)
+		return 0;
 
 	if (hdev->tx_hw.chip_data->chip_type != MESON_CPU_ID_S5)
 		return 0;
@@ -4625,8 +4720,10 @@ static int hdmitx21_status_check(void *data)
 	idx[1] = 16; /* vid_pll0_clk */
 	idx[2] = 89; /* htx_tmds20_clk */
 
-	while (1) {
+	while (!kthread_should_stop()) {
 		msleep_interruptible(1000);
+		if (kthread_should_stop())
+			break;
 		if (!hdev->tx_comm.ready)
 			continue;
 		/* skip FRL mode */
@@ -4710,6 +4807,11 @@ static int amhdmitx_probe(struct platform_device *pdev)
 	struct hdmitx_tracer *tx_tracer;
 	struct hdmitx_event_mgr *tx_event_mgr;
 	bool hpd_state;
+	bool audio_registered = false;
+	bool vout_inited = false;
+	bool hdcp_inited = false;
+	bool drm_hooked = false;
+	bool tee_registered = false;
 
 	pr_debug("amhdmitx_probe_start\n");
 
@@ -4728,74 +4830,49 @@ static int amhdmitx_probe(struct platform_device *pdev)
 	hdmitx_common_init(tx_comm, &hdev->tx_hw.base);
 
 	ret = amhdmitx_get_dt_info(pdev, hdev);
-	/* if (ret) */
-		/* return ret; */
+	if (ret) {
+		r = ret;
+		goto err_clear_drvdata;
+	}
 
-	amhdmitx_clktree_probe(&pdev->dev, hdev);
+	ret = amhdmitx_clktree_probe(&pdev->dev, hdev);
+	if (ret) {
+		r = ret;
+		goto err_clear_drvdata;
+	}
 	if (0) /* TODO */
 		amhdmitx21_vpu_dev_register(hdev);
 
 	r = alloc_chrdev_region(&hdev->hdmitx_id, 0, HDMI_TX_COUNT,
 				DEVICE_NAME);
+	if (r)
+		goto err_clear_drvdata;
+
 	cdev_init(&hdev->cdev, &amhdmitx_fops);
 	hdev->cdev.owner = THIS_MODULE;
 	r = cdev_add(&hdev->cdev, hdev->hdmitx_id, HDMI_TX_COUNT);
+	if (r)
+		goto err_unregister_chrdev;
 
 	hdmitx_class = class_create(THIS_MODULE, "amhdmitx");
 	if (IS_ERR(hdmitx_class)) {
-		unregister_chrdev_region(hdev->hdmitx_id, HDMI_TX_COUNT);
-		return -1;
+		r = PTR_ERR(hdmitx_class);
+		hdmitx_class = NULL;
+		goto err_cdev_del;
 	}
 
 	dev = device_create(hdmitx_class, NULL, hdev->hdmitx_id, hdev,
 			    "amhdmitx%d", 0); /* kernel>=2.6.27 */
 
-	if (!dev) {
-		HDMITX_INFO("device_create create error\n");
-		class_destroy(hdmitx_class);
-		r = -EEXIST;
-		return r;
+	if (IS_ERR(dev)) {
+		r = PTR_ERR(dev);
+		HDMITX_INFO("device_create create error: %d\n", r);
+		goto err_class_destroy;
 	}
 	hdev->hdtx_dev = dev;
-	ret = device_create_file(dev, &dev_attr_disp_mode);
-	ret = device_create_file(dev, &dev_attr_vid_mute);
-	ret = device_create_file(dev, &dev_attr_config);
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
-	ret = device_create_file(dev, &dev_attr_vrr_cap);
-	ret = device_create_file(dev, &dev_attr_vrr_mode);
-#endif
-	ret = device_create_file(dev, &dev_attr_lipsync_cap);
-	ret = device_create_file(dev, &dev_attr_hdmi_hdr_status);
-	ret = device_create_file(dev, &dev_attr_aud_mute);
-	ret = device_create_file(dev, &dev_attr_sspll);
-	ret = device_create_file(dev, &dev_attr_rxsense_policy);
-	ret = device_create_file(dev, &dev_attr_rxsense_state);
-	ret = device_create_file(dev, &dev_attr_cedst_policy);
-	ret = device_create_file(dev, &dev_attr_cedst_count);
-	ret = device_create_file(dev, &dev_attr_hdcp_mode);
-	ret = device_create_file(dev, &dev_attr_hdcp_ver);
-	ret = device_create_file(dev, &dev_attr_hdcp_type_policy);
-	ret = device_create_file(dev, &dev_attr_hdcp_lstore);
-	ret = device_create_file(dev, &dev_attr_ready);
-	ret = device_create_file(dev, &dev_attr_ll_mode);
-	ret = device_create_file(dev, &dev_attr_ll_user_mode);
-	ret = device_create_file(dev, &dev_attr_aon_output);
-	ret = device_create_file(dev, &dev_attr_def_stream_type);
-	ret = device_create_file(dev, &dev_attr_propagate_stream_type);
-	ret = device_create_file(dev, &dev_attr_cont_smng_method);
-	ret = device_create_file(dev, &dev_attr_frl_rate);
-	ret = device_create_file(dev, &dev_attr_dsc_en);
-	ret = device_create_file(dev, &dev_attr_dsc_policy);
-	ret = device_create_file(dev, &dev_attr_hdr_priority_mode);
-	ret = device_create_file(dev, &dev_attr_is_passthrough_switch);
-	ret = device_create_file(dev, &dev_attr_is_hdcp_cts_te);
-	ret = device_create_file(dev, &dev_attr_need_filter_hdcp_off);
-	ret = device_create_file(dev, &dev_attr_filter_hdcp_off_period);
-	ret = device_create_file(dev, &dev_attr_not_restart_hdcp);
-	ret = device_create_file(dev, &dev_attr_hdr_mute_frame);
-	ret = device_create_file(dev, &dev_attr_clkmsr);
-	ret = device_create_file(dev, &dev_attr_hdmitx_pkt_dump);
-	ret = device_create_file(dev, &dev_attr_hdmitx_basic_config);
+	r = hdmitx21_create_device_files(dev);
+	if (r)
+		goto err_device_destroy;
 
 	/*platform related functions*/
 	tx_event_mgr = hdmitx_event_mgr_create(pdev, hdev->hdtx_dev);
@@ -4811,8 +4888,10 @@ static int amhdmitx_probe(struct platform_device *pdev)
 	hdmitx_early_suspend_handler.param = hdev;
 	register_early_suspend(&hdmitx_early_suspend_handler);
 #endif
+#ifdef CONFIG_AMLOGIC_LEGACY_EARLY_SUSPEND
 	hdev->nb.notifier_call = hdmitx_reboot_notifier;
 	register_reboot_notifier(&hdev->nb);
+#endif
 
 	/* init HW */
 	hdmitx21_meson_init(hdev);
@@ -4832,6 +4911,7 @@ static int amhdmitx_probe(struct platform_device *pdev)
 	hdmitx_hdr_state_init(&hdev->tx_comm);
 
 	hdmitx_vout_init(tx_comm, &hdev->tx_hw.base);
+	vout_inited = true;
 
 #if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC)
 	if (!hdev->pxp_mode && hdmitx21_uboot_audio_en()) {
@@ -4846,6 +4926,7 @@ static int amhdmitx_probe(struct platform_device *pdev)
 	hdmitx21_audio_mute_op(1, 0);
 	if (!hdev->pxp_mode)
 		aout_register_client(&hdmitx_notifier_nb_a);
+	audio_registered = !hdev->pxp_mode;
 #endif
 
 	/* get efuse ctrl state */
@@ -4855,6 +4936,10 @@ static int amhdmitx_probe(struct platform_device *pdev)
 	INIT_WORK(&hdev->work_hdr_unmute, hdr_unmute_work_func);
 	hdev->hdmi_hpd_wq = alloc_ordered_workqueue(DEVICE_NAME,
 		WQ_HIGHPRI | __WQ_LEGACY | WQ_MEM_RECLAIM);
+	if (!hdev->hdmi_hpd_wq) {
+		r = -ENOMEM;
+		goto err_vout_uninit;
+	}
 	INIT_DELAYED_WORK(&hdev->work_hpd_plugin, hdmitx_hpd_plugin_irq_handler);
 	INIT_DELAYED_WORK(&hdev->work_hpd_plugout, hdmitx_hpd_plugout_irq_handler);
 	/* hdcp related work scheduled in system workqueue */
@@ -4862,20 +4947,36 @@ static int amhdmitx_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&hdev->work_up_hdcp_timeout, hdmitx_up_hdcp_timeout_handler);
 	/* interrupt handler need to be scheduled in high priority */
 	hdev->hdmi_intr_wq = alloc_workqueue("hdmitx_intr_wq", WQ_HIGHPRI | WQ_CPU_INTENSIVE, 0);
+	if (!hdev->hdmi_intr_wq) {
+		r = -ENOMEM;
+		goto err_destroy_hpd_wq;
+	}
 	INIT_DELAYED_WORK(&hdev->work_internal_intr, hdmitx_top_intr_handler);
 
 	/* for rx sense feature */
 	hdev->tx_comm.rxsense_wq = alloc_workqueue("hdmitx_rxsense",
 					   WQ_SYSFS | WQ_FREEZABLE, 0);
+	if (!hdev->tx_comm.rxsense_wq) {
+		r = -ENOMEM;
+		goto err_destroy_intr_wq;
+	}
 	INIT_DELAYED_WORK(&hdev->tx_comm.work_rxsense, hdmitx_rxsense_process);
 	/* for cedst feature */
 	hdev->tx_comm.cedst_wq = alloc_workqueue("hdmitx_cedst",
 					 WQ_SYSFS | WQ_FREEZABLE, 0);
+	if (!hdev->tx_comm.cedst_wq) {
+		r = -ENOMEM;
+		goto err_destroy_rxsense_wq;
+	}
 	INIT_DELAYED_WORK(&hdev->tx_comm.work_cedst, hdmitx_cedst_process);
 
-	hdmitx21_hdcp_init();
+	r = hdmitx21_hdcp_init();
+	if (r)
+		goto err_destroy_cedst_wq;
+	hdcp_inited = true;
 	/* bind drm before hdmi event */
 	hdmitx_hook_drm(&pdev->dev);
+	drm_hooked = true;
 
 	/* init power_uevent state */
 	hdmitx21_set_uevent(HDMITX_HDCPPWR_EVENT, HDMI_WAKEUP);
@@ -4888,7 +4989,12 @@ static int amhdmitx_probe(struct platform_device *pdev)
 	mutex_lock(&hdev->tx_comm.hdmimode_mutex);
 	intr_status_init_clear();
 	/* enable irq firstly before any hpd handler to prevent missing irq. */
-	hdmitx_setupirqs(hdev);
+	ret = hdmitx_setupirqs(hdev);
+	if (ret) {
+		mutex_unlock(&hdev->tx_comm.hdmimode_mutex);
+		r = ret;
+		goto err_unhook_drm;
+	}
 
 	/* actions in top half of plug intr, do it before enable irq */
 	hpd_state = !!hdmitx_hw_cntl_misc(&hdev->tx_hw.base,
@@ -4906,25 +5012,86 @@ static int amhdmitx_probe(struct platform_device *pdev)
 
 	/* create misc device for communication with TEE: hdcp key load ready notify */
 	tee_comm_dev_reg(hdev);
+	tee_registered = true;
 
 	hdev->task = kthread_run(hdmitx21_status_check, (void *)hdev,
 				      "kthread_hdmist_check");
+	if (IS_ERR(hdev->task)) {
+		r = PTR_ERR(hdev->task);
+		hdev->task = NULL;
+		goto err_tee_unreg;
+	}
 
 	pr_debug("%s end\n", __func__);
 	/*everything is ready, create sysfs here.*/
 	hdmitx_sysfs_common_create(dev, &hdev->tx_comm, &hdev->tx_hw.base);
 	hdev->hdmi_init = 1;
 
+	return 0;
+
+err_tee_unreg:
+	if (tee_registered)
+		tee_comm_dev_unreg(hdev);
+	hdmitx_freeirqs(hdev);
+err_unhook_drm:
+	if (drm_hooked)
+		hdmitx_unhook_drm(&pdev->dev);
+	if (hdcp_inited)
+		hdmitx21_hdcp_exit();
+err_destroy_cedst_wq:
+	cancel_delayed_work_sync(&hdev->work_start_hdcp);
+	cancel_delayed_work_sync(&hdev->work_up_hdcp_timeout);
+	cancel_delayed_work_sync(&hdev->tx_comm.work_cedst);
+	destroy_workqueue(hdev->tx_comm.cedst_wq);
+err_destroy_rxsense_wq:
+	cancel_delayed_work_sync(&hdev->tx_comm.work_rxsense);
+	destroy_workqueue(hdev->tx_comm.rxsense_wq);
+err_destroy_intr_wq:
+	cancel_delayed_work_sync(&hdev->work_internal_intr);
+	destroy_workqueue(hdev->hdmi_intr_wq);
+err_destroy_hpd_wq:
+	cancel_delayed_work_sync(&hdev->work_hpd_plugout);
+	cancel_delayed_work_sync(&hdev->work_hpd_plugin);
+	destroy_workqueue(hdev->hdmi_hpd_wq);
+err_vout_uninit:
+#if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC)
+	if (audio_registered)
+		aout_unregister_client(&hdmitx_notifier_nb_a);
+#endif
+	if (vout_inited)
+		hdmitx_vout_uninit();
+	hdmitx21_remove_device_files(dev);
+err_device_destroy:
+	device_destroy(hdmitx_class, hdev->hdmitx_id);
+	hdev->hdtx_dev = NULL;
+err_class_destroy:
+	class_destroy(hdmitx_class);
+	hdmitx_class = NULL;
+err_cdev_del:
+	cdev_del(&hdev->cdev);
+err_unregister_chrdev:
+	unregister_chrdev_region(hdev->hdmitx_id, HDMI_TX_COUNT);
+err_clear_drvdata:
+	if (tx21_dev == hdev)
+		tx21_dev = NULL;
+	dev_set_drvdata(device, NULL);
 	return r;
 }
 
-static int amhdmitx_remove(struct platform_device *pdev)
+static void amhdmitx_remove(struct platform_device *pdev)
 {
 	struct hdmitx_dev *hdev = dev_get_drvdata(&pdev->dev);
-	struct device *dev = hdev->hdtx_dev;
+	struct device *dev;
+
+	if (!hdev)
+		return;
+	hdev->hdmi_init = 0;
+
+	dev = hdev->hdtx_dev;
 
 	/*remove sysfs before uninit/*/
-	hdmitx_sysfs_common_destroy(dev);
+	if (dev)
+		hdmitx_sysfs_common_destroy(dev);
 
 	tee_comm_dev_unreg(hdev);
 	/*unbind from drm.*/
@@ -4932,21 +5099,27 @@ static int amhdmitx_remove(struct platform_device *pdev)
 
 	cancel_work_sync(&hdev->work_hdr);
 	cancel_work_sync(&hdev->work_hdr_unmute);
+	cancel_delayed_work_sync(&hdev->work_start_hdcp);
+	cancel_delayed_work_sync(&hdev->work_up_hdcp_timeout);
 	hdmitx21_hdcp_exit();
-	cancel_delayed_work(&hdev->work_internal_intr);
+	hdmitx_freeirqs(hdev);
+	cancel_delayed_work_sync(&hdev->work_internal_intr);
 	destroy_workqueue(hdev->hdmi_intr_wq);
-	cancel_delayed_work(&hdev->work_hpd_plugout);
-	cancel_delayed_work(&hdev->work_hpd_plugin);
+	cancel_delayed_work_sync(&hdev->work_hpd_plugout);
+	cancel_delayed_work_sync(&hdev->work_hpd_plugin);
 	destroy_workqueue(hdev->hdmi_hpd_wq);
-	cancel_delayed_work(&hdev->tx_comm.work_rxsense);
+	cancel_delayed_work_sync(&hdev->tx_comm.work_rxsense);
 	destroy_workqueue(hdev->tx_comm.rxsense_wq);
-	cancel_delayed_work(&hdev->tx_comm.work_cedst);
+	cancel_delayed_work_sync(&hdev->tx_comm.work_cedst);
 	destroy_workqueue(hdev->tx_comm.cedst_wq);
 
+	if (hdev->task && !IS_ERR(hdev->task)) {
+		kthread_stop(hdev->task);
+		hdev->task = NULL;
+	}
 	if (hdev->tx_hw.base.uninit)
 		hdev->tx_hw.base.uninit(&hdev->tx_hw.base);
 	hdev->hpd_event = 0xff;
-	kthread_stop(hdev->task);
 	hdmitx_vout_uninit();
 
 #if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC)
@@ -4954,52 +5127,23 @@ static int amhdmitx_remove(struct platform_device *pdev)
 #endif
 
 	/* Remove the cdev */
-	device_remove_file(dev, &dev_attr_disp_mode);
-	device_remove_file(dev, &dev_attr_vid_mute);
-	device_remove_file(dev, &dev_attr_config);
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
-	device_remove_file(dev, &dev_attr_vrr_cap);
-	device_remove_file(dev, &dev_attr_vrr_mode);
-	device_remove_file(dev, &dev_attr_vrr_cap);
-#endif
-	device_remove_file(dev, &dev_attr_ll_mode);
-	device_remove_file(dev, &dev_attr_ll_user_mode);
-	device_remove_file(dev, &dev_attr_ready);
-	device_remove_file(dev, &dev_attr_aud_mute);
-	device_remove_file(dev, &dev_attr_sspll);
-	device_remove_file(dev, &dev_attr_rxsense_policy);
-	device_remove_file(dev, &dev_attr_rxsense_state);
-	device_remove_file(dev, &dev_attr_cedst_policy);
-	device_remove_file(dev, &dev_attr_cedst_count);
-	device_remove_file(dev, &dev_attr_hdcp_type_policy);
-	device_remove_file(dev, &dev_attr_hdmi_hdr_status);
-	device_remove_file(dev, &dev_attr_hdcp_ver);
-	device_remove_file(dev, &dev_attr_def_stream_type);
-	device_remove_file(dev, &dev_attr_aon_output);
-	device_remove_file(dev, &dev_attr_propagate_stream_type);
-	device_remove_file(dev, &dev_attr_cont_smng_method);
-	device_remove_file(dev, &dev_attr_frl_rate);
-	device_remove_file(dev, &dev_attr_dsc_en);
-	device_remove_file(dev, &dev_attr_dsc_policy);
-	device_remove_file(dev, &dev_attr_hdr_priority_mode);
-	device_remove_file(dev, &dev_attr_is_passthrough_switch);
-	device_remove_file(dev, &dev_attr_is_hdcp_cts_te);
-	device_remove_file(dev, &dev_attr_need_filter_hdcp_off);
-	device_remove_file(dev, &dev_attr_filter_hdcp_off_period);
-	device_remove_file(dev, &dev_attr_not_restart_hdcp);
-	device_remove_file(dev, &dev_attr_hdr_mute_frame);
-	device_remove_file(dev, &dev_attr_clkmsr);
-	device_remove_file(dev, &dev_attr_hdmitx_pkt_dump);
-	device_remove_file(dev, &dev_attr_hdmitx_basic_config);
+	hdmitx21_remove_device_files(dev);
 	cdev_del(&hdev->cdev);
 
-	device_destroy(hdmitx_class, hdev->hdmitx_id);
+	if (hdmitx_class)
+		device_destroy(hdmitx_class, hdev->hdmitx_id);
+	hdev->hdtx_dev = NULL;
 
-	class_destroy(hdmitx_class);
+	if (hdmitx_class) {
+		class_destroy(hdmitx_class);
+		hdmitx_class = NULL;
+	}
 
 	unregister_chrdev_region(hdev->hdmitx_id, HDMI_TX_COUNT);
 	hdmitx_common_destroy(&hdev->tx_comm);
-	return 0;
+	if (tx21_dev == hdev)
+		tx21_dev = NULL;
+	dev_set_drvdata(&pdev->dev, NULL);
 }
 
 static void hdmitx_clk_ctrl(struct hdmitx_dev *hdev, bool en)

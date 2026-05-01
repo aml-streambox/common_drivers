@@ -20,8 +20,8 @@
 #include <drm/drm_self_refresh_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_plane_helper.h>
-#include <drm/drm_gem_cma_helper.h>
-#include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_gem_dma_helper.h>
+#include <drm/drm_fb_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_rect.h>
 #include <drm/drm_fb_helper.h>
@@ -696,4 +696,3 @@ void meson_atomic_helper_commit_tail(struct drm_atomic_state *old_state)
 	/*use */
 	meson_atomic_helper_commit_tail_rpm(old_state);
 }
-

@@ -25,7 +25,19 @@
 #include <linux/seq_file.h>
 #include <linux/proc_fs.h>
 #endif
-#include <linux/upstream_version.h>
+
+#ifndef AML_KERNEL_VERSION
+#define AML_KERNEL_VERSION CONFIG_AMLOGIC_KERNEL_VERSION
+#endif
+#ifndef MERGE_DATE
+#define MERGE_DATE "unknown"
+#endif
+#ifndef UPSTREAM_VERSION
+#define UPSTREAM_VERSION "v7.1-rc1"
+#endif
+#ifndef AML_PATCH_VERSION
+#define AML_PATCH_VERSION "local"
+#endif
 
 static int init_done;
 static unsigned char cpuinfo_chip_id[CHIPID_LEN];
@@ -196,4 +208,5 @@ static int __init meson_cpuinfo_init(void)
 }
 
 module_init(meson_cpuinfo_init);
+MODULE_DESCRIPTION("Amlogic CPU information provider");
 MODULE_LICENSE("GPL v2");

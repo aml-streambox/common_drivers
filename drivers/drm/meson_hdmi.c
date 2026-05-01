@@ -10,7 +10,8 @@
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_connector.h>
-#include <drm/drm_hdcp.h>
+#include <drm/display/drm_hdcp.h>
+#include <drm/display/drm_hdcp_helper.h>
 #include <drm/drm_modeset_lock.h>
 
 #include <linux/component.h>
@@ -2134,7 +2135,8 @@ static void meson_hdmitx_hpd_cb(void *data)
 					   CEC_PHYS_ADDR_INVALID);
 	}
 #endif
-	drm_kms_helper_hotplug_event(am_hdmi->base.connector.dev);
+	if (!drm_helper_hpd_irq_event(am_hdmi->base.connector.dev))
+		drm_kms_helper_hotplug_event(am_hdmi->base.connector.dev);
 }
 
 int meson_hdmitx_dev_bind(struct drm_device *drm,
@@ -2145,13 +2147,13 @@ int meson_hdmitx_dev_bind(struct drm_device *drm,
 	struct drm_connector *connector;
 	struct drm_encoder *encoder;
 	struct meson_connector *mesonconn;
-	struct connector_hpd_cb hpd_cb;
+	struct connector_hpd_cb hpd_cb = {0};
 	struct hdmitx_common *tx_comm;
 	int ret;
 #ifdef CONFIG_CEC_NOTIFIER
 	struct edid *pedid;
 #endif
-	struct connector_hdcp_cb hdcp_cb;
+	struct connector_hdcp_cb hdcp_cb = {0};
 	int hdcp_ctl_lvl;
 
 	DRM_DEBUG("%s [%d]\n", __func__, __LINE__);
@@ -2214,10 +2216,14 @@ int meson_hdmitx_dev_bind(struct drm_device *drm,
 			       DRM_MODE_ENCODER_TMDS, "am_hdmi_encoder");
 	if (ret) {
 		dev_err(priv->dev, "Failed to init hdmi encoder\n");
-		return ret;
+		goto err_connector_cleanup;
 	}
 
-	drm_connector_attach_encoder(connector, encoder);
+	ret = drm_connector_attach_encoder(connector, encoder);
+	if (ret) {
+		dev_err(priv->dev, "Failed to attach hdmi encoder\n");
+		goto err_encoder_cleanup;
+	}
 
 	/*hpd irq moved to amhdmitx, register call back */
 	hpd_cb.callback = meson_hdmitx_hpd_cb;
@@ -2273,12 +2279,24 @@ int meson_hdmitx_dev_bind(struct drm_device *drm,
 #endif
 	DRM_DEBUG("%s out[%d]\n", __func__, __LINE__);
 	return 0;
+
+err_encoder_cleanup:
+	drm_encoder_cleanup(encoder);
+err_connector_cleanup:
+	drm_connector_cleanup(connector);
+	return ret;
 }
 
 int meson_hdmitx_dev_unbind(struct drm_device *drm,
 	int type, int connector_id)
 {
-	if (am_hdmi_info.hdmitx_dev->hdcp_exit)
+	struct connector_hpd_cb hpd_cb = {0};
+
+	if (am_hdmi_info.hdmitx_dev && am_hdmi_info.hdmitx_dev->hdmitx_common)
+		hdmitx_register_hpd_cb(am_hdmi_info.hdmitx_dev->hdmitx_common,
+			&hpd_cb);
+
+	if (am_hdmi_info.hdmitx_dev && am_hdmi_info.hdmitx_dev->hdcp_exit)
 		am_hdmi_info.hdmitx_dev->hdcp_exit();
 
 #ifdef CONFIG_CEC_NOTIFIER
@@ -2291,6 +2309,7 @@ int meson_hdmitx_dev_unbind(struct drm_device *drm,
 
 	am_hdmi_info.base.connector.funcs->destroy(&am_hdmi_info.base.connector);
 	am_hdmi_info.encoder.funcs->destroy(&am_hdmi_info.encoder);
+	am_hdmi_info.hdmitx_dev = NULL;
 	return 0;
 }
 

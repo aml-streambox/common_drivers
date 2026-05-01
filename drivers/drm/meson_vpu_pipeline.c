@@ -5,6 +5,7 @@
 
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/delay.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <linux/of_device.h>
@@ -724,8 +725,14 @@ int vpu_video_plane_update(struct meson_vpu_sub_pipeline *sub_pipeline,
 	mvb = &mvv->base;
 	mvbs = priv_to_block_state(mvb->obj.state);
 	old_mvbs = meson_vpu_block_get_old_state(mvb, old_state);
-	old_mvps = meson_vpu_pipeline_get_state(pipeline, old_state);
-	new_mvps = priv_to_pipeline_state(pipeline->obj.state);
+	/* Commit tail runs after atomic check; use cached old/new private states. */
+	old_mvps = meson_vpu_pipeline_get_old_state(pipeline, old_state);
+	new_mvps = meson_vpu_pipeline_get_new_state(pipeline, old_state);
+	if (!old_mvps || !new_mvps) {
+		DRM_ERROR("invalid video pipeline state: old=%p new=%p\n",
+			  old_mvps, new_mvps);
+		return -EINVAL;
+	}
 	old_mvsps = &old_mvps->sub_states[crtc_index];
 	new_mvsps = &new_mvps->sub_states[crtc_index];
 
@@ -761,8 +768,14 @@ int vpu_osd_pipeline_update(struct meson_vpu_sub_pipeline *sub_pipeline,
 	unsigned long affected_blocks = 0;
 
 	crtc_index = sub_pipeline->index;
-	old_mvps = meson_vpu_pipeline_get_state(pipeline, old_state);
-	new_mvps = priv_to_pipeline_state(pipeline->obj.state);
+	/* Commit tail runs after atomic check; use cached old/new private states. */
+	old_mvps = meson_vpu_pipeline_get_old_state(pipeline, old_state);
+	new_mvps = meson_vpu_pipeline_get_new_state(pipeline, old_state);
+	if (!old_mvps || !new_mvps) {
+		DRM_ERROR("invalid osd pipeline state: old=%p new=%p\n",
+			  old_mvps, new_mvps);
+		return -EINVAL;
+	}
 	old_mvsps = &old_mvps->sub_states[crtc_index];
 	new_mvsps = &new_mvps->sub_states[crtc_index];
 	new_mvps->global_afbc = 0;

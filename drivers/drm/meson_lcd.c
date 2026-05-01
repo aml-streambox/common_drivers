@@ -523,13 +523,18 @@ int meson_panel_dev_unbind(struct drm_device *drm,
 	if (!connector)
 		DRM_ERROR("%s got invalid connector id %d\n",
 			__func__, connector_id);
+	if (!connector)
+		return -ENOENT;
 
 	drm_lcd = connector_to_meson_panel(connector);
-	if (!drm_lcd)
+	if (!drm_lcd) {
+		drm_connector_put(connector);
 		return -EINVAL;
+	}
 
 	drm_lcd->base.connector.funcs->destroy(&drm_lcd->base.connector);
 	drm_lcd->encoder.funcs->destroy(&drm_lcd->encoder);
+	drm_connector_put(connector);
 
 	kfree(drm_lcd);
 	DRM_DEBUG("[%s]-[%d] called\n", __func__, __LINE__);

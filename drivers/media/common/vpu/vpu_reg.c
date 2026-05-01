@@ -357,10 +357,11 @@ void vpu_vcbus_set_mask(unsigned int _reg, unsigned int _mask)
 
 	spin_lock_irqsave(&vpu_vcbus_reg_lock, flags);
 	p = check_vpu_vcbus_reg(_reg);
-	if (p)
-		val = readl(p);
-	else
-		val = 0;
+	if (!p) {
+		spin_unlock_irqrestore(&vpu_vcbus_reg_lock, flags);
+		return;
+	}
+	val = readl(p);
 	val |= _mask;
 	writel(val, p);
 	spin_unlock_irqrestore(&vpu_vcbus_reg_lock, flags);
@@ -375,10 +376,11 @@ void vpu_vcbus_clr_mask(unsigned int _reg, unsigned int _mask)
 
 	spin_lock_irqsave(&vpu_vcbus_reg_lock, flags);
 	p = check_vpu_vcbus_reg(_reg);
-	if (p)
-		val = readl(p);
-	else
-		val = 0;
+	if (!p) {
+		spin_unlock_irqrestore(&vpu_vcbus_reg_lock, flags);
+		return;
+	}
+	val = readl(p);
 	val &= ~(_mask);
 	writel(val, p);
 	spin_unlock_irqrestore(&vpu_vcbus_reg_lock, flags);
@@ -450,4 +452,3 @@ void vpu_ao_setb(unsigned int _reg, unsigned int _value,
 		     ~(((1L << (_len)) - 1) << (_start))) |
 		     (((_value) & ((1L << (_len)) - 1)) << (_start))));
 }
-

@@ -376,12 +376,12 @@ amblt_probe_err_0:
 	return -1;
 }
 
-static int amblt_remove(struct platform_device *pdev)
+static void amblt_remove(struct platform_device *pdev)
 {
 	struct amblt_drv_s *amblt_drv = platform_get_drvdata(pdev);
 
 	if (!amblt_drv)
-		return 0;
+		return;
 
 	amblt_vsync_irq_remove(amblt_drv);
 	amblt_debug_file_remove(amblt_drv);
@@ -390,8 +390,6 @@ static int amblt_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 
 	kfree(amblt_drv);
-
-	return 0;
 }
 
 static int amblt_resume(struct platform_device *pdev)

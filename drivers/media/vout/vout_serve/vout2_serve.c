@@ -967,7 +967,7 @@ static int aml_vout2_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int aml_vout2_remove(struct platform_device *pdev)
+static void aml_vout2_remove(struct platform_device *pdev)
 {
 #ifdef CONFIG_AMLOGIC_LEGACY_EARLY_SUSPEND
 	unregister_early_suspend(&early_suspend);
@@ -976,8 +976,6 @@ static int aml_vout2_remove(struct platform_device *pdev)
 	vout2_attr_remove();
 	vout2_fops_remove();
 	vout2_unregister_server(&nulldisp_vout2_server);
-
-	return 0;
 }
 
 static void aml_vout2_shutdown(struct platform_device *pdev)

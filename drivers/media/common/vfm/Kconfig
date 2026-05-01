@@ -4,7 +4,7 @@
 #
 
 config AMLOGIC_MEDIA_VFM
-	tristate "Amlogic VFM Support"
+	bool "Amlogic VFM Support"
 	default n
 	help
 		Select to enable VFM support

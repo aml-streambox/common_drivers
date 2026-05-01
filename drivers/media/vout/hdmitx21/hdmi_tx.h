@@ -434,7 +434,8 @@ extern unsigned long hdcp_reauth_dbg;
 extern unsigned long streamtype_dbg;
 extern unsigned long en_fake_rcv_id;
 void hdmitx_top_intr_handler(struct work_struct *work);
-void hdmitx_setupirqs(struct hdmitx_dev *phdev);
+int hdmitx_setupirqs(struct hdmitx_dev *phdev);
+void hdmitx_freeirqs(struct hdmitx_dev *phdev);
 void intr_status_init_clear(void);
 void ddc_toggle_sw_tpi(void);
 bool hdmitx_ddcm_read(u8 seg_index, u8 slave_addr, u8 reg_addr, u8 *p_buf, u16 len);
@@ -563,4 +564,3 @@ bool hdmitx21_edid_only_support_sd(struct hdmitx_dev *hdev);
 void hdmitx_clks_gate_ctrl(bool en);
 
 #endif /* __HDMI_TX_H__ */
-

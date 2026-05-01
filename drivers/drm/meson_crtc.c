@@ -56,6 +56,17 @@ void set_amdv_mode(int mode)
 }
 #endif
 
+#ifndef CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_VECM
+void set_hdr_policy(int policy)
+{
+}
+
+int get_hdr_policy(void)
+{
+	return 0;
+}
+#endif
+
 static int gamma_boot_ctl(char *str)
 {
 	if (strncmp("0", str, 1) == 0)
@@ -1249,4 +1260,3 @@ struct am_meson_crtc *meson_crtc_bind(struct meson_drm *priv, int idx)
 
 	return amcrtc;
 }
-

@@ -2275,13 +2275,13 @@ lcd_probe_err_0:
 	return ret;
 }
 
-static int lcd_remove(struct platform_device *pdev)
+static void lcd_remove(struct platform_device *pdev)
 {
 	struct aml_lcd_drv_s *pdrv = platform_get_drvdata(pdev);
 	int index;
 
 	if (!pdrv)
-		return 0;
+		return;
 
 	lcd_drm_remove(pdrv->dev);
 
@@ -2308,7 +2308,6 @@ static int lcd_remove(struct platform_device *pdev)
 	lcd_global_remove_once();
 
 	LCDPR("[%d]: %s, init_state:0x%x\n", index, __func__, lcd_drv_init_state);
-	return 0;
 }
 
 static int lcd_resume(struct platform_device *pdev)

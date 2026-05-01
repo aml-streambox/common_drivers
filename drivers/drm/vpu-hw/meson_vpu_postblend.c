@@ -4,6 +4,8 @@
  */
 
 /* Amlogic Headers */
+#include <drm/drm_vblank.h>
+#include <linux/amlogic/cpu_version.h>
 #include <linux/amlogic/media/vout/vout_notify.h>
 
 #ifdef CONFIG_AMLOGIC_MEDIA_ENHANCEMENT
@@ -32,6 +34,19 @@ static u32 osd_vpp2_bld_ctrl;
 static u32 osd_vpp2_bld_ctrl_mask = 0x30;
 /* indicates whether vpp1&vpp2 has been notified or not */
 static u32 osd_vpp_bld_ctrl_update_mask = 0x80000000;
+
+static void meson_drm_wait_one_vblank(struct drm_device *drm, int crtc_index)
+{
+	struct drm_crtc *crtc;
+
+	drm_for_each_crtc(crtc, drm) {
+		if (drm_crtc_index(crtc) == crtc_index) {
+			drm_crtc_wait_one_vblank(crtc);
+			return;
+		}
+	}
+}
+
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 static struct osd_scope_s vpp_osd1_scope;
 #endif
@@ -47,7 +62,7 @@ static struct postblend_reg_s postblend_reg = {
 	VPP_OSD1_IN_SIZE,
 };
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
 static struct postblend1_reg_s postblend1_reg[3] = {
 	{},
 	{
@@ -89,7 +104,7 @@ static struct postblend_reg_s s5_postblend_reg = {
 };
 #endif
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
 static void fix_vpu_clk2_default_regs(struct meson_vpu_block *vblk,
 				struct rdma_reg_ops *reg_ops, int crtc_index, u32 *crtcmask_osd);
 #endif
@@ -207,7 +222,7 @@ static int drm_postblend_notify_amvideo(void)
 	return 0;
 }
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
 static void vpp1_osd1_blend_scope_set(struct meson_vpu_block *vblk,
 				      struct rdma_reg_ops *reg_ops,
 				      struct postblend1_reg_s *reg,
@@ -437,6 +452,9 @@ static void txhd2_postblend_set_state(struct meson_vpu_block *vblk,
 	vpp_chk_crc(vblk, reg_ops, amc);
 }
 
+#endif
+
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
 static void t7_postblend_set_state(struct meson_vpu_block *vblk,
 				struct meson_vpu_block_state *state,
 				struct meson_vpu_block_state *old_state)
@@ -562,6 +580,9 @@ static void t7_postblend_set_state(struct meson_vpu_block *vblk,
 		  scope.h_start, scope.h_end, scope.v_start, scope.v_end);
 }
 
+#endif
+
+#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 static void s5_postblend_set_state(struct meson_vpu_block *vblk,
 				struct meson_vpu_block_state *state,
 				struct meson_vpu_block_state *old_state)
@@ -745,7 +766,7 @@ static void postblend_hw_disable(struct meson_vpu_block *vblk,
 			MESON_DRM_BLOCK("invalid crtc index\n");
 
 		drm_postblend_notify_amvideo();
-		drm_wait_one_vblank(state->sub->pipeline->priv->drm, crtc_index);
+		meson_drm_wait_one_vblank(state->sub->pipeline->priv->drm, crtc_index);
 	}
 
 	MESON_DRM_BLOCK("%s disable called.\n", postblend->base.name);
@@ -845,7 +866,7 @@ static void s5_postblend_hw_disable(struct meson_vpu_block *vblk,
 		vpp1_bld = vpp1_bld & 0xffffff0f;
 		osd_vpp1_bld_ctrl = vpp1_bld | osd_vpp_bld_ctrl_update_mask;
 		drm_postblend_notify_amvideo();
-		drm_wait_one_vblank(vblk->pipeline->priv->drm, crtc_index);
+		meson_drm_wait_one_vblank(vblk->pipeline->priv->drm, crtc_index);
 	}
 	MESON_DRM_BLOCK("%s disable called.\n", postblend->base.name);
 }
@@ -907,7 +928,7 @@ static void postblend_dump_register(struct drm_printer *p,
 		reg_addr, value);
 }
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
 static void t7_postblend_dump_register(struct drm_printer *p,
 							struct meson_vpu_block *vblk)
 {
@@ -1241,6 +1262,18 @@ static void t3x_postblend_hw_init(struct meson_vpu_block *vblk)
 
 #endif
 
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+static void t7_postblend_hw_init(struct meson_vpu_block *vblk)
+{
+	struct meson_vpu_postblend *postblend = to_postblend_block(vblk);
+
+	postblend->reg = &postblend_reg;
+	postblend->reg1 = &postblend1_reg[vblk->index];
+
+	MESON_DRM_BLOCK("%s hw_init called.\n", postblend->base.name);
+}
+#endif
+
 struct meson_vpu_block_ops postblend_ops = {
 	.check_state = postblend_check_state,
 	.update_state = postblend_set_state,
@@ -1314,4 +1347,15 @@ struct meson_vpu_block_ops txhd2_postblend_ops = {
 	.init = txhd2_postblend_hw_init,
 };
 
+#endif
+
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+struct meson_vpu_block_ops t7_postblend_ops = {
+	.check_state = postblend_check_state,
+	.update_state = t7_postblend_set_state,
+	.enable = postblend_hw_enable,
+	.disable = postblend_hw_disable,
+	.dump_register = t7_postblend_dump_register,
+	.init = t7_postblend_hw_init,
+};
 #endif

@@ -7,8 +7,8 @@
 #include <drm/drm_plane.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_fb_cma_helper.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_gem_dma_helper.h>
+#include <drm/drm_fb_dma_helper.h>
 
 #include <linux/platform_device.h>
 #include <linux/of_device.h>
@@ -19,6 +19,7 @@
 #include <linux/clk.h>
 #include <linux/cma.h>
 #include <linux/sync_file.h>
+#include <linux/amlogic/cpu_version.h>
 
 /* Amlogic Headers */
 #include <linux/amlogic/media/vout/vout_notify.h>
@@ -539,6 +540,28 @@ static const struct meson_vpu_data vpu_s7d_data = {
 };
 #endif
 
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+static const struct meson_vpu_data vpu_t7_data = {
+	.crtc_func = {
+		.reg_ops = common_reg_ops,
+	},
+	.pipe_ops = &t7_vpu_pipeline_ops,
+	.osd_ops = &t7_osd_ops,
+	.afbc_ops = &t7_afbc_ops,
+	.scaler_ops = &scaler_ops,
+	.osdblend_ops = &osdblend_ops,
+	.hdr_ops = &t7_hdr_ops,
+	.dv_ops = &db_ops,
+	.postblend_ops = &t7_postblend_ops,
+	.video_ops = &video_ops,
+	.osd_formats = &osd_formats,
+	.video_formats = &video_formats,
+	.enc_method = 1,
+	.max_osdblend_width = 3840,
+	.max_osdblend_height = 2160,
+};
+#endif
+
 static const struct meson_vpu_data vpu_s1a_data = {
 	.crtc_func = {
 		.reg_ops = common_reg_ops,
@@ -585,8 +608,6 @@ static const struct of_device_id am_meson_vpu_driver_dt_match[] = {
 	  .data = &vpu_g12a_data,},
 #endif
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
-	{.compatible = "amlogic, meson-t7-vpu",
-	 .data = &vpu_t7_data,},
 	{.compatible = "amlogic, meson-t5w-vpu",
 	 .data = &vpu_t5w_data,},
 	{.compatible = "amlogic, meson-t3-vpu",
@@ -604,6 +625,8 @@ static const struct of_device_id am_meson_vpu_driver_dt_match[] = {
 	{.compatible = "amlogic, meson-s7d-vpu",
 	  .data = &vpu_s7d_data,},
 #endif
+	{.compatible = "amlogic, meson-t7-vpu",
+	 .data = &vpu_t7_data,},
 	{.compatible = "amlogic, meson-s1a-vpu",
 	  .data = &vpu_s1a_data,},
 	{}
@@ -624,11 +647,9 @@ static int am_meson_vpu_probe(struct platform_device *pdev)
 	return component_add(dev, &am_meson_vpu_component_ops);
 }
 
-static int am_meson_vpu_remove(struct platform_device *pdev)
+static void am_meson_vpu_remove(struct platform_device *pdev)
 {
 	component_del(&pdev->dev, &am_meson_vpu_component_ops);
-
-	return 0;
 }
 
 static struct platform_driver am_meson_vpu_platform_driver = {

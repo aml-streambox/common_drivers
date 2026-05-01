@@ -19,6 +19,7 @@
 #include <linux/cdev.h>
 #include <linux/io.h>
 #include <linux/of_address.h>
+#include <linux/string.h>
 #include <linux/arm-smccc.h>
 
 #include "common.h"
@@ -32,18 +33,23 @@ int hdmitx21_init_reg_map(struct platform_device *pdev)
 	struct resource res;
 	struct device_node *np = pdev->dev.of_node;
 
+	memset(reg21_maps, 0, sizeof(reg21_maps));
+
 	for (i = 0; i < REG_IDX_END; i++) {
 		if (of_address_to_resource(np, i, &res)) {
 			HDMITX_ERROR("not get regbase index %d\n", i);
-			return 0;
+			return -ENODEV;
 		}
 
 		reg21_maps[i].phy_addr = res.start;
 		reg21_maps[i].size = resource_size(&res);
 		reg21_maps[i].p = devm_ioremap(&pdev->dev, res.start,
 					     resource_size(&res));
-		if (IS_ERR(reg21_maps[i].p))
+		if (!reg21_maps[i].p) {
+			HDMITX_ERROR("failed to map regbase index %d: 0x%x\n",
+				     i, reg21_maps[i].phy_addr);
 			return -ENOMEM;
+		}
 
 		pr_debug("Mapped PHY: 0x%x\n", reg21_maps[i].phy_addr);
 	}
@@ -60,6 +66,9 @@ inline bool cor_reg_addr_mask(u32 addr)
 {
 	struct hdmitx_dev *hdev = get_hdmitx21_device();
 
+	if (!hdev || !hdev->tx_hw.chip_data)
+		return true;
+
 	addr = addr & 0xffff;
 	if (hdev->tx_hw.chip_data->chip_type == MESON_CPU_ID_S1A)
 		if ((addr >= 0x0330 && addr <= 0x03ff) ||
@@ -70,6 +79,16 @@ inline bool cor_reg_addr_mask(u32 addr)
 			return 1;
 
 	return 0;
+}
+
+static bool hdmitx21_reg_map_valid(u32 index, u32 offset, u32 width)
+{
+	if (index >= REG_IDX_END || !reg21_maps[index].p ||
+	    !reg21_maps[index].phy_addr || !reg21_maps[index].size)
+		return false;
+
+	return offset <= reg21_maps[index].size &&
+		width <= reg21_maps[index].size - offset;
 }
 
 static void sec_wr(u32 addr, u32 data)
@@ -127,6 +146,10 @@ u32 TO21_PHY_ADDR(u32 addr)
 
 	index = addr >> BASE_REG_OFFSET;
 	offset = addr & (((1 << BASE_REG_OFFSET) - 1));
+	if (!hdmitx21_reg_map_valid(index, offset, sizeof(u32))) {
+		HDMITX_ERROR("invalid reg phy addr 0x%x\n", addr);
+		return 0;
+	}
 
 	return (reg21_maps[index].phy_addr + offset);
 }
@@ -138,6 +161,10 @@ static void __iomem *TO_PMAP_ADDR(u32 addr)
 
 	index = addr >> BASE_REG_OFFSET;
 	offset = addr & (((1 << BASE_REG_OFFSET) - 1));
+	if (!hdmitx21_reg_map_valid(index, offset, sizeof(u32))) {
+		HDMITX_ERROR("invalid reg map addr 0x%x\n", addr);
+		return NULL;
+	}
 
 	return (void __iomem *)(reg21_maps[index].p + offset);
 }
@@ -159,8 +186,12 @@ u32 hd21_read_reg(u32 vaddr)
 {
 	u32 val;
 	u32 paddr = get_enc_paddr(vaddr);
+	void __iomem *map = TO_PMAP_ADDR(paddr);
 
-	val = readl(TO_PMAP_ADDR(paddr));
+	if (!map)
+		return 0;
+
+	val = readl(map);
 	if (hdmi_dbg)
 		HDMITX_INFO("Rd32[0x%08x] 0x%08x\n", TO21_PHY_ADDR(paddr), val);
 	return val;
@@ -171,9 +202,13 @@ void hd21_write_reg(u32 vaddr, u32 val)
 {
 	u32 rval;
 	u32 paddr = get_enc_paddr(vaddr);
+	void __iomem *map = TO_PMAP_ADDR(paddr);
 
-	writel(val, TO_PMAP_ADDR(paddr));
-	rval = readl(TO_PMAP_ADDR(paddr));
+	if (!map)
+		return;
+
+	writel(val, map);
+	rval = readl(map);
 	if (!hdmi_dbg)
 		return;
 	if (val != rval)
@@ -202,7 +237,10 @@ static u32 hdmitx_rd_top(u32 addr)
 	u32 base_offset;
 	u32 data;
 
-	base_offset = reg21_maps[2].phy_addr;
+	if (!hdmitx21_reg_map_valid(HDMITX_TOP_REG_IDX, addr, sizeof(u32)))
+		return 0;
+
+	base_offset = reg21_maps[HDMITX_TOP_REG_IDX].phy_addr;
 
 	data = sec_rd(base_offset + addr);
 	return data;
@@ -215,8 +253,10 @@ static u8 hdmitx_rd_cor(u32 addr)
 
 	if (cor_reg_addr_mask(addr))
 		return 0;
+	if (!hdmitx21_reg_map_valid(HDMITX_COR_REG_IDX, addr, sizeof(u8)))
+		return 0;
 
-	base_offset = reg21_maps[1].phy_addr;
+	base_offset = reg21_maps[HDMITX_COR_REG_IDX].phy_addr;
 	data = sec_rd8(base_offset + addr);
 	return data;
 } /* hdmitx_rd_cor */
@@ -225,7 +265,10 @@ static void hdmitx_wr_top(u32 addr, u32 data)
 {
 	u32 base_offset;
 
-	base_offset = reg21_maps[2].phy_addr;
+	if (!hdmitx21_reg_map_valid(HDMITX_TOP_REG_IDX, addr, sizeof(u32)))
+		return;
+
+	base_offset = reg21_maps[HDMITX_TOP_REG_IDX].phy_addr;
 	sec_wr(base_offset + addr, data);
 } /* hdmitx_wr_top */
 
@@ -235,8 +278,10 @@ static void hdmitx_wr_cor(u32 addr, u8 data)
 
 	if (cor_reg_addr_mask(addr))
 		return;
+	if (!hdmitx21_reg_map_valid(HDMITX_COR_REG_IDX, addr, sizeof(u8)))
+		return;
 
-	base_offset = reg21_maps[1].phy_addr;
+	base_offset = reg21_maps[HDMITX_COR_REG_IDX].phy_addr;
 	sec_wr8(base_offset + addr, data);
 } /* hdmitx_wr_cor */
 

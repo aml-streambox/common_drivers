@@ -32,8 +32,12 @@ int vpu_power_init_check_dft(void)
 	}
 	if (vpu_conf.data->chip_type == VPU_CHIP_T7 ||
 		vpu_conf.data->chip_type == VPU_CHIP_S7 ||
-		vpu_conf.data->chip_type == VPU_CHIP_TXHD2)
-		ret = init_arb_urgent_table();
+		vpu_conf.data->chip_type == VPU_CHIP_TXHD2) {
+		int arb_ret = init_arb_urgent_table();
+
+		if (arb_ret)
+			return arb_ret;
+	}
 	return ret;
 }
 
@@ -264,10 +268,16 @@ void vpu_power_on_new(void)
 		pwr_id = vpu_conf.data->pwrctrl_id_table[i];
 		if (pwr_id == VPU_PWR_ID_END)
 			break;
-		if (vpu_conf.data->chip_type == VPU_CHIP_SC2) {
+		if (vpu_conf.data->chip_type == VPU_CHIP_SC2 ||
+		    vpu_conf.data->chip_type == VPU_CHIP_T7) {
+			unsigned long ret;
+
 			if (vpu_debug_print_flag)
 				VPUPR("%s: pwr_id=%d\n", __func__, pwr_id);
-			pwr_ctrl_psci_smc(pwr_id, 1);
+			ret = pwr_ctrl_psci_smc(pwr_id, 1);
+			if (ret)
+				VPUERR("%s: power on %u failed: %lu\n",
+				       __func__, pwr_id, ret);
 		}
 		i++;
 	}
@@ -291,10 +301,16 @@ void vpu_power_off_new(void)
 		if (pwr_id == VPU_PWR_ID_END)
 			break;
 
-		if (vpu_conf.data->chip_type == VPU_CHIP_SC2) {
+		if (vpu_conf.data->chip_type == VPU_CHIP_SC2 ||
+		    vpu_conf.data->chip_type == VPU_CHIP_T7) {
+			unsigned long ret;
+
 			if (vpu_debug_print_flag)
 				VPUPR("%s: pwr_id=%d\n", __func__, pwr_id);
-			pwr_ctrl_psci_smc(pwr_id, 0);
+			ret = pwr_ctrl_psci_smc(pwr_id, 0);
+			if (ret)
+				VPUERR("%s: power off %u failed: %lu\n",
+				       __func__, pwr_id, ret);
 		}
 		i++;
 	}

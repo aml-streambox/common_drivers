@@ -2360,13 +2360,13 @@ lcd_extern_probe_err:
 	return -1;
 }
 
-static int aml_lcd_extern_remove(struct platform_device *pdev)
+static void aml_lcd_extern_remove(struct platform_device *pdev)
 {
 	struct lcd_extern_driver_s *edrv = platform_get_drvdata(pdev);
 	int index, i;
 
 	if (!edrv)
-		return 0;
+		return;
 
 	index = edrv->index;
 
@@ -2385,7 +2385,6 @@ static int aml_lcd_extern_remove(struct platform_device *pdev)
 
 	EXTPR("[%d]: %s, init_state:0x%x\n",
 		index, __func__, ext_drv_init_state);
-	return 0;
 }
 
 #ifdef CONFIG_OF
@@ -2429,4 +2428,3 @@ void __exit aml_lcd_extern_exit(void)
 //MODULE_AUTHOR("AMLOGIC");
 //MODULE_DESCRIPTION("LCD extern driver");
 //MODULE_LICENSE("GPL");
-

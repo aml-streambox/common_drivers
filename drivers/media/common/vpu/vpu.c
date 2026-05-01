@@ -1768,7 +1768,7 @@ static int remove_vpu_debug_class(void)
 static int get_vpu_config(struct platform_device *pdev)
 {
 	int ret = 0;
-	unsigned int val;
+	unsigned int val = vpu_conf.data->clk_level_dft;
 	struct device_node *vpu_np;
 
 	vpu_np = pdev->dev.of_node;
@@ -1780,6 +1780,7 @@ static int get_vpu_config(struct platform_device *pdev)
 	ret = of_property_read_u32(vpu_np, "clk_level", &val);
 	if (ret) {
 		VPUPR("don't find clk_level, use default setting\n");
+		vpu_conf.clk_level = val;
 	} else {
 		if (val >= vpu_conf.data->clk_level_max) {
 			VPUERR("clk_level is out of support, set to default\n");
@@ -1803,14 +1804,21 @@ static int get_vpu_config(struct platform_device *pdev)
 	return ret;
 }
 
-static void vpu_clktree_init(struct device *dev)
+static int vpu_clktree_init(struct device *dev)
 {
-	if (!vpu_conf.data->clktree_init)
-		return;
+	int ret;
 
-	vpu_conf.data->clktree_init(dev);
+	if (!vpu_conf.data->clktree_init)
+		return 0;
+
+	ret = vpu_conf.data->clktree_init(dev);
+	if (ret)
+		return ret;
+
 	if (vpu_debug_print_flag)
 		VPUPR("clktree_init\n");
+
+	return 0;
 }
 
 static int vpu_power_init_check(void)
@@ -2223,6 +2231,59 @@ static struct vpu_data_s vpu_data_t3 = {
 	.module_init_table = NULL,
 
 	.mem_pd_table = vpu_mem_pd_t5,
+	.clk_gate_table = NULL,
+
+	.power_on = vpu_power_on_new,
+	.power_off = vpu_power_off_new,
+	.mem_pd_init_off = vpu_mem_pd_init_off,
+	.module_init_config = vpu_module_init_config,
+	.power_init_check = vpu_power_init_check_dft,
+	.mempd_switch = vpu_vmod_mem_pd_switch_new,
+	.mempd_get = vpu_vmod_mem_pd_get_new,
+	.clk_apply = vpu_clk_apply_dft,
+	.clktree_init = vpu_clktree_init_dft,
+};
+#endif
+
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+static unsigned int vpu_pwrctrl_id_table_t7[] = {
+	PM_VPU_HDMI_T7,
+	PM_VI_CLK1_T7,
+	PM_VI_CLK2_T7,
+	VPU_PWR_ID_END
+};
+
+static struct vpu_data_s vpu_data_t7 = {
+	.chip_type = VPU_CHIP_T7,
+	.chip_name = "t7",
+
+	.clk_level_dft = CLK_LEVEL_DFT_G12A,
+	.clk_level_max = CLK_LEVEL_MAX_G12A,
+	.fclk_div_table = fclk_div_table_g12a,
+	.clk_table = vpu_clk_table,
+	.reg_map_table = vpu_reg_table_new,
+	.test_reg_table = vcbus_test_reg,
+
+	.vpu_clk_reg = CLKCTRL_VPU_CLK_CTRL,
+	.vapb_clk_reg = CLKCTRL_VAPBCLK_CTRL,
+
+	.gp_pll_valid = 0,
+	.mem_pd_reg[0] = PWRCTRL_MEM_PD5_SC2,
+	.mem_pd_reg[1] = PWRCTRL_MEM_PD6_SC2,
+	.mem_pd_reg[2] = PWRCTRL_MEM_PD7_SC2,
+	.mem_pd_reg[3] = PWRCTRL_MEM_PD8_SC2,
+	.mem_pd_reg[4] = PWRCTRL_MEM_PD9_SC2,
+	.mem_pd_reg_flag = 1,
+	.vpu_read_type = READ0_2,
+
+	.pwrctrl_id_table = vpu_pwrctrl_id_table_t7,
+
+	.power_table = NULL,
+	.iso_table = NULL,
+	.reset_table = NULL,
+	.module_init_table = NULL,
+
+	.mem_pd_table = vpu_mem_pd_sc2,
 	.clk_gate_table = NULL,
 
 	.power_on = vpu_power_on_new,
@@ -2797,6 +2858,12 @@ static const struct of_device_id vpu_of_table[] = {
 		.data = &vpu_data_s4,
 	},
 #endif
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+	{
+		.compatible = "amlogic, vpu-t7",
+		.data = &vpu_data_t7,
+	},
+#endif
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT_C1A
 	{
 		.compatible = "amlogic, vpu-s4d",
@@ -2908,6 +2975,7 @@ static struct early_suspend vpu_early_suspend_handler = {
 static int vpu_probe(struct platform_device *pdev)
 {
 	const struct of_device_id *match;
+	int power_init_needed;
 	int ret = 0;
 
 	vpu_debug_print_flag = 0;
@@ -2942,12 +3010,16 @@ static int vpu_probe(struct platform_device *pdev)
 
 	get_vpu_config(pdev);
 
-	ret = vpu_power_init_check();
-	vpu_clktree_init(&pdev->dev);
+	power_init_needed = vpu_power_init_check();
+	if (power_init_needed < 0)
+		return power_init_needed;
+	ret = vpu_clktree_init(&pdev->dev);
+	if (ret)
+		return ret;
 	mutex_lock(&vpu_clk_mutex);
 	set_vpu_clk(vpu_conf.clk_level);
 	mutex_unlock(&vpu_clk_mutex);
-	if (ret)
+	if (power_init_needed)
 		vpu_power_init();
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	creat_vpu_debug_class();
@@ -2961,7 +3033,7 @@ static int vpu_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int vpu_remove(struct platform_device *pdev)
+static void vpu_remove(struct platform_device *pdev)
 {
 #ifdef CONFIG_AMLOGIC_LEGACY_EARLY_SUSPEND
 	unregister_early_suspend(&vpu_early_suspend_handler);
@@ -2970,10 +3042,7 @@ static int vpu_remove(struct platform_device *pdev)
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	remove_vpu_debug_class();
 #endif
-	kfree(vpu_conf.clk_vmod);
 	vpu_conf.clk_vmod = NULL;
-
-	return 0;
 }
 
 static void vpu_shutdown(struct platform_device *pdev)
@@ -3050,7 +3119,9 @@ static int vpu_resume(struct device *dev)
 	int ret;
 
 	ret = vpu_power_init_check();
-	vpu_clktree_init(dev);
+	ret = vpu_clktree_init(dev);
+	if (ret)
+		return ret;
 	if (ret)
 		vpu_power_init();
 

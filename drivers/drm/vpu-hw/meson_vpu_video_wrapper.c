@@ -7,6 +7,7 @@
 #include <linux/init.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
+#include <linux/dma-resv.h>
 
 #ifdef CONFIG_AMLOGIC_MEDIA_CANVAS
 #include <linux/amlogic/media/canvas/canvas.h>
@@ -25,6 +26,38 @@
 static int video_axis_zoom = -1;
 module_param(video_axis_zoom, int, 0664);
 MODULE_PARM_DESC(video_axis_zoom, "video_axis_zoom");
+
+static struct dma_fence *meson_dmabuf_get_write_fence(struct dma_buf *dmabuf)
+{
+	struct dma_fence *fence = NULL;
+
+	if (!dmabuf || !dmabuf->resv)
+		return NULL;
+
+	if (dma_resv_get_singleton(dmabuf->resv, DMA_RESV_USAGE_WRITE, &fence))
+		return NULL;
+
+	return fence;
+}
+
+static void meson_dmabuf_add_write_fence(struct dma_buf *dmabuf,
+						 struct dma_fence *fence)
+{
+	int ret;
+
+	if (!dmabuf || !dmabuf->resv || !fence)
+		return;
+
+	ret = dma_resv_lock(dmabuf->resv, NULL);
+	if (ret)
+		return;
+
+	ret = dma_resv_reserve_fences(dmabuf->resv, 1);
+	if (!ret)
+		dma_resv_add_fence(dmabuf->resv, fence, DMA_RESV_USAGE_WRITE);
+
+	dma_resv_unlock(dmabuf->resv);
+}
 
 static void
 video_vfm_convert_to_vfminfo(struct meson_vpu_video_state *mvvs,
@@ -428,8 +461,7 @@ static void video_set_state(struct meson_vpu_block *vblk,
 			vf_info.reserved[0] = 0;
 			vf_info.phy_addr[0] = mvvs->phy_addr[0];
 			vf_info.phy_addr[1] = mvvs->phy_addr[1];
-			if (vf_info.dmabuf && vf_info.dmabuf->resv)
-				old_fence = dma_resv_get_excl_unlocked(vf_info.dmabuf->resv);
+			old_fence = meson_dmabuf_get_write_fence(vf_info.dmabuf);
 			MESON_DRM_FENCE("dmabuf(%px), release_fence(%px-%d), old_fence=%px-%d\n",
 				vf_info.dmabuf, vf_info.release_fence,
 				vf_info.release_fence ?
@@ -440,10 +472,10 @@ static void video_set_state(struct meson_vpu_block *vblk,
 				dma_fence_get(vf_info.release_fence);
 			} else {
 				MESON_DRM_FENCE("no re-frame\n");
-				if (vf_info.dmabuf && vf_info.dmabuf->resv)
-					dma_resv_add_excl_fence(vf_info.dmabuf->resv,
+				meson_dmabuf_add_write_fence(vf_info.dmabuf,
 						vf_info.release_fence);
 			}
+			dma_fence_put(old_fence);
 			MESON_DRM_BLOCK("vf-info crop:%u, %u, %u, %u, pic:%u, %u\n",
 				vf_info.crop_x, vf_info.crop_y, vf_info.crop_w, vf_info.crop_h,
 				vf_info.buffer_w, vf_info.buffer_h);
@@ -482,8 +514,7 @@ static void video_set_state(struct meson_vpu_block *vblk,
 			else
 				vf_info.phy_addr[1] = mvvs->phy_addr[1];
 			vf_info.reserved[0] = video_type_get(pixel_format);
-			if (vf_info.dmabuf && vf_info.dmabuf->resv)
-				old_fence = dma_resv_get_excl_unlocked(vf_info.dmabuf->resv);
+			old_fence = meson_dmabuf_get_write_fence(vf_info.dmabuf);
 			MESON_DRM_FENCE("dmabuf(%px), release_fence(%px-%d), old_fence=%px-%d\n",
 				vf_info.dmabuf, vf_info.release_fence,
 				vf_info.release_fence ?
@@ -494,10 +525,10 @@ static void video_set_state(struct meson_vpu_block *vblk,
 				dma_fence_get(vf_info.release_fence);
 			} else {
 				MESON_DRM_FENCE("no re-frame\n");
-				if (vf_info.dmabuf && vf_info.dmabuf->resv)
-					dma_resv_add_excl_fence(vf_info.dmabuf->resv,
+				meson_dmabuf_add_write_fence(vf_info.dmabuf,
 						vf_info.release_fence);
 			}
+			dma_fence_put(old_fence);
 #ifdef CONFIG_AMLOGIC_VIDEO_COMPOSER
 			video_display_setframe(vblk->index, &vf_info, 0);
 #endif

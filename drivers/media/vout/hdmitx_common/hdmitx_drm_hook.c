@@ -6,6 +6,7 @@
 #include <linux/amlogic/media/vout/hdmitx_common/hdmitx_common.h>
 #include <drm/amlogic/meson_drm_bind.h>
 #include <linux/component.h>
+#include <linux/vmalloc.h>
 #include "hdmitx_drm_hook.h"
 #include "hdmitx_log.h"
 

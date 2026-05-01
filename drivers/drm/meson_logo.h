@@ -5,8 +5,6 @@
 
 #ifndef __AM_MESON_LOGO_H
 #define __AM_MESON_LOGO_H
-#include <stdarg.h>
-
 #define VMODE_NAME_LEN_MAX    64
 
 struct am_meson_logo {
@@ -68,4 +66,3 @@ void am_meson_logo_init(struct drm_device *dev);
 void am_meson_free_logo_memory(void);
 
 #endif
-

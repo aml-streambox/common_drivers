@@ -25,4 +25,5 @@ static void __exit secmon_main_exit(void)
 
 module_init(secmon_main_init);
 module_exit(secmon_main_exit);
+MODULE_DESCRIPTION("Amlogic secure monitor support");
 MODULE_LICENSE("GPL v2");

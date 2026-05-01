@@ -790,7 +790,6 @@ static int threadfunc(void *data)
 static void video_start_monitor(void)
 {
 	int err;
-	struct sched_param param = {.sched_priority = 2};
 
 	if (!lowlatency_enable)
 		return;
@@ -803,8 +802,7 @@ static void video_start_monitor(void)
 		video_thread = NULL;
 		return;
 	}
-	if (sched_setscheduler(video_thread, SCHED_FIFO, &param))
-		pr_err("VID: Could not set realtime priority.\n");
+	sched_set_fifo_low(video_thread);
 	wake_up_process(video_thread);
 }
 
@@ -9896,13 +9894,12 @@ static int amvideom_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int amvideom_remove(struct platform_device *pdev)
+static void amvideom_remove(struct platform_device *pdev)
 {
 #ifdef CONFIG_AMLOGIC_LEGACY_EARLY_SUSPEND
 	unregister_early_suspend(&video_early_suspend_handler);
 #endif
 	video_keeper_exit();
-	return 0;
 }
 
 static struct platform_driver amvideom_driver = {

@@ -1940,7 +1940,7 @@ static int  hdmitx21_hdcp_stat_monitor(void *data)
 	static int count;
 	struct hdmitx_dev *hdev = (struct hdmitx_dev *)data;
 
-	while (hdev->hpd_event != 0xff) {
+	while (!kthread_should_stop() && hdev->hpd_event != 0xff) {
 		hdmi21_authenticated = hdmitx21_get_hdcp_auth_rlt(hdev);
 		if (auth_stat != hdmi21_authenticated) {
 			/* below is only for customer hdcp re-auth filter
@@ -2002,7 +2002,8 @@ static int  hdmitx21_hdcp_stat_monitor(void *data)
 			if (hdev->tx_comm.hdcp_ctl_lvl > 0)
 				hdmitx21_hdcp_result_cb(hdev, auth_stat);
 		}
-		msleep_interruptible(200);
+		if (msleep_interruptible(200) && kthread_should_stop())
+			break;
 	}
 	return 0;
 }
@@ -2024,8 +2025,13 @@ void hdmitx21_ctrl_hdcp_gate(int hdcp_mode, bool en)
 int hdmitx21_hdcp_init(void)
 {
 	struct hdmitx_dev *hdev = get_hdmitx21_device();
+	int ret;
 
 	pr_hdcp_info(L_2, "%s[%d]\n", __func__, __LINE__);
+	if (!hdev)
+		return -ENODEV;
+
+	memset(&hdcp_hdcp, 0, sizeof(hdcp_hdcp));
 	hdev->am_hdcp = &hdcp_hdcp;
 	p_hdcp = &hdcp_hdcp;
 	p_hdcp->hdcp_state = HDCP_STAT_NONE;
@@ -2043,7 +2049,17 @@ int hdmitx21_hdcp_init(void)
 	hdmitx21_rst_stream_type(p_hdcp);
 	p_hdcp->p_ksv_lists =
 		kmalloc((HDCP1X_MAX_TX_DEV_SRC + 1) * sizeof(struct hdcp_ksv_t), GFP_KERNEL);
+	if (!p_hdcp->p_ksv_lists) {
+		ret = -ENOMEM;
+		goto err_clear_hdcp;
+	}
+
 	p_hdcp->hdcp_wq = alloc_workqueue(DEVICE_NAME, WQ_HIGHPRI | WQ_CPU_INTENSIVE, 0);
+	if (!p_hdcp->hdcp_wq) {
+		ret = -ENOMEM;
+		goto err_free_ksv;
+	}
+
 	init_hdcp_works(&p_hdcp->timer_hdcp_rcv_auth, hdcp_check_ds_auth_whandler, "hdcp_rcv_auth");
 	init_hdcp_works(&p_hdcp->timer_hdcp_rpt_auth, hdcp_check_ds_auth_whandler, "hdcp_rpt_auth");
 	init_hdcp_works(&p_hdcp->timer_bksv_poll_done,
@@ -2060,14 +2076,65 @@ int hdmitx21_hdcp_init(void)
 	INIT_DELAYED_WORK(&p_hdcp->stream_type_wk, hdmitx_propagate_stream_type);
 	hdev->task_hdcp = kthread_run(hdmitx21_hdcp_stat_monitor, (void *)hdev,
 				      "kthread_hdcp");
+	if (IS_ERR(hdev->task_hdcp)) {
+		ret = PTR_ERR(hdev->task_hdcp);
+		hdev->task_hdcp = NULL;
+		goto err_destroy_wq;
+	}
 
 	return 0;
+
+err_destroy_wq:
+	destroy_workqueue(p_hdcp->hdcp_wq);
+	p_hdcp->hdcp_wq = NULL;
+err_free_ksv:
+	kfree(p_hdcp->p_ksv_lists);
+	p_hdcp->p_ksv_lists = NULL;
+err_clear_hdcp:
+	hdev->am_hdcp = NULL;
+	p_hdcp = NULL;
+	return ret;
 }
 
 void hdmitx21_hdcp_exit(void)
 {
 	struct hdmitx_dev *hdev = get_hdmitx21_device();
 
+	if (!hdev || !p_hdcp)
+		return;
+
+	p_hdcp->timer_hdcp_rcv_auth.period_ms = 0;
+	p_hdcp->timer_hdcp_rpt_auth.period_ms = 0;
+	p_hdcp->timer_bksv_poll_done.period_ms = 0;
+	p_hdcp->timer_hdcp_start.period_ms = 0;
+	p_hdcp->timer_ddc_check_nak.period_ms = 0;
+	p_hdcp->timer_hdcp_auth_fail_retry.period_ms = 0;
+	p_hdcp->timer_update_csm.period_ms = 0;
+
 	hdcptx_reset(p_hdcp);
-	kthread_stop(hdev->task_hdcp);
+	if (hdev->task_hdcp) {
+		kthread_stop(hdev->task_hdcp);
+		hdev->task_hdcp = NULL;
+	}
+
+	cancel_delayed_work_sync(&p_hdcp->timer_hdcp_rcv_auth.dwork);
+	cancel_delayed_work_sync(&p_hdcp->timer_hdcp_rpt_auth.dwork);
+	cancel_delayed_work_sync(&p_hdcp->timer_bksv_poll_done.dwork);
+	cancel_delayed_work_sync(&p_hdcp->timer_hdcp_start.dwork);
+	cancel_delayed_work_sync(&p_hdcp->timer_ddc_check_nak.dwork);
+	cancel_delayed_work_sync(&p_hdcp->timer_hdcp_auth_fail_retry.dwork);
+	cancel_delayed_work_sync(&p_hdcp->timer_update_csm.dwork);
+	cancel_delayed_work_sync(&p_hdcp->ksv_notify_wk);
+	cancel_delayed_work_sync(&p_hdcp->req_reauth_wk);
+	cancel_delayed_work_sync(&p_hdcp->stream_mute_wk);
+	cancel_delayed_work_sync(&p_hdcp->stream_type_wk);
+
+	if (p_hdcp->hdcp_wq) {
+		destroy_workqueue(p_hdcp->hdcp_wq);
+		p_hdcp->hdcp_wq = NULL;
+	}
+	kfree(p_hdcp->p_ksv_lists);
+	p_hdcp->p_ksv_lists = NULL;
+	hdev->am_hdcp = NULL;
+	p_hdcp = NULL;
 }

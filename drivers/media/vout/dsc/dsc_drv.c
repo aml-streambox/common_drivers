@@ -397,12 +397,12 @@ static int dsc_probe(struct platform_device *pdev)
 	return -1;
 }
 
-static int dsc_remove(struct platform_device *pdev)
+static void dsc_remove(struct platform_device *pdev)
 {
 	struct aml_dsc_drv_s *dsc_drv = platform_get_drvdata(pdev);
 
 	if (!dsc_drv)
-		return 0;
+		return;
 
 	if (dsc_drv->dsc_reg_base) {
 		devm_iounmap(&pdev->dev, dsc_drv->dsc_reg_base);
@@ -419,8 +419,6 @@ static int dsc_remove(struct platform_device *pdev)
 	dsc_drv = NULL;
 
 	dsc_global_remove_once();
-
-	return 0;
 }
 
 static int dsc_resume(struct platform_device *pdev)

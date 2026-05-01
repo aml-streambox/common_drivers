@@ -1187,7 +1187,7 @@ static int aml_vout_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int aml_vout_remove(struct platform_device *pdev)
+static void aml_vout_remove(struct platform_device *pdev)
 {
 	if (vsync_irq)
 		free_irq(vsync_irq, (void *)&vsync_irq);
@@ -1199,8 +1199,6 @@ static int aml_vout_remove(struct platform_device *pdev)
 	vout_attr_remove();
 	vout_fops_remove();
 	vout_unregister_server(&nulldisp_vout_server);
-
-	return 0;
 }
 
 static void aml_vout_shutdown(struct platform_device *pdev)

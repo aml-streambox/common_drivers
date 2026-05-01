@@ -7,6 +7,8 @@
 #include <linux/init.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
+#include <linux/amlogic/cpu_version.h>
+#include <linux/amlogic/media/vpu_secure/vpu_secure.h>
 
 #ifdef CONFIG_AMLOGIC_MEDIA_CANVAS
 #include <linux/amlogic/media/canvas/canvas.h>
@@ -15,10 +17,6 @@
 #ifdef CONFIG_AMLOGIC_MEDIA_ENHANCEMENT
 #include <linux/amlogic/media/amvecm/amvecm.h>
 #endif
-#ifdef CONFIG_AMLOGIC_MEDIA_SECURITY
-#include <linux/amlogic/media/vpu_secure/vpu_secure.h>
-#endif
-
 #include "meson_vpu_pipeline.h"
 #include "meson_crtc.h"
 #include "meson_vpu_reg.h"
@@ -1966,6 +1964,35 @@ static void s7d_osd_hw_init(struct meson_vpu_block *vblk)
 
 #endif
 
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+static void t7_osd_hw_init(struct meson_vpu_block *vblk)
+{
+	struct meson_vpu_pipeline *pipeline;
+	struct meson_vpu_osd *osd = to_osd_block(vblk);
+
+	if (!vblk || !osd) {
+		MESON_DRM_BLOCK("hw_init break for NULL.\n");
+		return;
+	}
+
+	pipeline = osd->base.pipeline;
+	if (!pipeline) {
+		MESON_DRM_BLOCK("hw_init break for NULL.\n");
+		return;
+	}
+
+	osd->reg = &osd_mif_reg[vblk->index];
+	osd->mif_acc_mode = LINEAR_MIF;
+	osd->viu2_hold_line = VIU2_DEFAULT_HOLD_LINE;
+
+#ifdef CONFIG_AMLOGIC_MEDIA_SECURITY
+	secure_register(OSD_MODULE, 0, osd_secure_op, osd_secure_cb);
+#endif
+
+	MESON_DRM_BLOCK("%s hw_init done.\n", osd->base.name);
+}
+#endif
+
 static void osd_hw_fini(struct meson_vpu_block *vblk)
 {
 	struct meson_vpu_osd *osd = to_osd_block(vblk);
@@ -2038,4 +2065,16 @@ struct meson_vpu_block_ops s7d_osd_ops = {
 	.fini = osd_hw_fini,
 };
 
+#endif
+
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+struct meson_vpu_block_ops t7_osd_ops = {
+	.check_state = osd_check_state,
+	.update_state = osd_set_state,
+	.enable = osd_hw_enable,
+	.disable = osd_hw_disable,
+	.dump_register = osd_dump_register,
+	.init = t7_osd_hw_init,
+	.fini = osd_hw_fini,
+};
 #endif

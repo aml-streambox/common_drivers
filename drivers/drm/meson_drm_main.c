@@ -33,6 +33,7 @@ static int __init meson_drm_main_init(void)
 	ret = am_meson_drm_init();
 	if (ret) {
 		DRM_ERROR("am_meson_drm_init fail\n");
+		am_meson_vpu_exit();
 		return ret;
 	}
 	DRM_DEBUG("%s() end[%d]\n", __func__, __LINE__);
@@ -42,8 +43,8 @@ static int __init meson_drm_main_init(void)
 static void __exit meson_drm_main_exit(void)
 {
 	DRM_DEBUG("%s() start[%d]\n", __func__, __LINE__);
-	am_meson_vpu_exit();
 	am_meson_drm_exit();
+	am_meson_vpu_exit();
 	DRM_DEBUG("%s() end[%d]\n", __func__, __LINE__);
 }
 
@@ -51,4 +52,5 @@ module_init(meson_drm_main_init);
 module_exit(meson_drm_main_exit);
 
 MODULE_LICENSE("GPL v2");
+MODULE_IMPORT_NS("DMA_BUF");
 #endif

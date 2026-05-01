@@ -73,7 +73,6 @@ static struct osd_scaler_reg_s osd_scaler_reg[HW_OSD_SCALER_NUM] = {
 	}
 };
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 static struct osd_scaler_reg_s osd_scaler_t7_reg[HW_OSD_SCALER_NUM] = {
 	{
 		T7_VPP_OSD_SCALE_COEF_IDX,
@@ -141,6 +140,7 @@ static struct osd_scaler_reg_s osd_scaler_t7_reg[HW_OSD_SCALER_NUM] = {
 	}
 };
 
+#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 static struct osd_scaler_reg_s osd_scaler_s5_reg[HW_OSD_SCALER_NUM] = {
 	{
 		OSD1_PROC_SCALE_COEF_IDX,
@@ -992,6 +992,12 @@ static void scaler_set_state(struct meson_vpu_block *vblk,
 	struct meson_vpu_pipeline *pipeline = scaler->base.pipeline;
 
 	mvps = priv_to_pipeline_state(pipeline->obj.state);
+	if (!mvps || !reg || !state || !state->sub || !state->sub->reg_ops) {
+		DRM_ERROR("%s invalid scaler state: mvps=%p reg=%p state=%p\n",
+			  __func__, mvps, reg, state);
+		return;
+	}
+
 	/*todo:move afbc start to afbc block.*/
 	if (pipeline->osd_version < OSD_V7)
 		arm_fbc_start(mvps, state->sub->reg_ops);
@@ -1108,10 +1114,8 @@ static void scaler_hw_init(struct meson_vpu_block *vblk)
 
 	if (vblk->pipeline->osd_version != OSD_V7)
 		scaler->reg = &osd_scaler_reg[vblk->index];
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	else
 		scaler->reg = &osd_scaler_t7_reg[vblk->index];
-#endif
 	scaler->linebuffer = OSD_SCALE_LINEBUFFER;
 	scaler->bank_length = OSD_SCALE_BANK_LENGTH;
 

@@ -330,10 +330,10 @@ plcd_probe_failed:
 	return -1;
 }
 
-static int plcd_remove(struct platform_device *pdev)
+static void plcd_remove(struct platform_device *pdev)
 {
 	if (!plcd_drv)
-		return 0;
+		return;
 
 	plcd_class_remove();
 	plcd_dev_remove();
@@ -346,8 +346,6 @@ static int plcd_remove(struct platform_device *pdev)
 	plcd_drv = NULL;
 
 	LCDPR("%s ok\n", __func__);
-
-	return 0;
 }
 
 #ifdef CONFIG_OF

@@ -33,6 +33,7 @@ extern int cpv_count;
 		   str, fn, early};                                     \
 	EXPORT_SYMBOL(__gki_setup_##fn)
 
+#if IS_ENABLED(CONFIG_AMLOGIC_GKI_TOOL)
 static inline unsigned long gki_symbol_value(const struct kernel_symbol *sym)
 {
 #ifdef CONFIG_HAVE_ARCH_PREL32_RELOCATIONS
@@ -106,5 +107,7 @@ void __module_init_hook(struct module *m);
 #define module_init(fn)			module_init_hook(fn)
 
 #endif //MODULE
+
+#endif /* CONFIG_AMLOGIC_GKI_TOOL */
 
 #endif //__GKI_MODULE_AMLOGIC_H

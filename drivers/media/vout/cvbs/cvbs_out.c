@@ -2073,11 +2073,10 @@ static int am_meson_cvbs_probe(struct platform_device *pdev)
 	return component_add(&pdev->dev, &meson_cvbs_bind_ops);
 }
 
-static int am_meson_cvbs_remove(struct platform_device *pdev)
+static void am_meson_cvbs_remove(struct platform_device *pdev)
 {
 	pr_info("[%s:%d] in\n", __func__, __LINE__);
 	component_del(&pdev->dev, &meson_cvbs_bind_ops);
-	return 0;
 }
 
 static const struct of_device_id am_meson_cvbs_dt_ids[] = {
@@ -2169,7 +2168,7 @@ cvbsout_probe_err:
 	return -1;
 }
 
-static int cvbsout_remove(struct platform_device *pdev)
+static void cvbsout_remove(struct platform_device *pdev)
 {
 	int i;
 
@@ -2198,7 +2197,6 @@ static int cvbsout_remove(struct platform_device *pdev)
 	//component_del(&pdev->dev, &meson_cvbs_bind_ops);
 	platform_driver_unregister(&am_meson_cvbs_pltfm_driver);
 	cvbs_log_info("%s\n", __func__);
-	return 0;
 }
 
 static void cvbsout_shutdown(struct platform_device *pdev)
@@ -2296,4 +2294,3 @@ __exit void cvbs_exit_module(void)
 //MODULE_AUTHOR("Platform-BJ <platform.bj@amlogic.com>");
 //MODULE_DESCRIPTION("TV Output Module");
 //MODULE_LICENSE("GPL");
-
