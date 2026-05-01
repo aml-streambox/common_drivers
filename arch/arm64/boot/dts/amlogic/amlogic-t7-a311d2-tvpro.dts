@@ -204,6 +204,14 @@
 		regulator-always-on;
 	};
 
+	vdd_mali: regulator-vdd-mali {
+		compatible = "regulator-fixed";
+		regulator-name = "VDD_MALI";
+		regulator-min-microvolt = <1150000>;
+		regulator-max-microvolt = <1150000>;
+		regulator-always-on;
+	};
+
 	vddio_1v8: regulator-vddio-1v8 {
 		compatible = "regulator-fixed";
 		regulator-name = "VDDIO_1V8";
@@ -310,6 +318,31 @@
 				};
 			};
 		};
+	};
+
+	gpu: gpu@fe400000 {
+		compatible = "amlogic,meson-t7-mali", "arm,mali-bifrost";
+		reg = <0x0 0xfe400000 0x0 0x4000>;
+		interrupt-parent = <&gic>;
+		interrupts = <GIC_SPI 146 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 145 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 144 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "job", "mmu", "gpu";
+		clocks = <&clkc_periphs CLKID_MALI>;
+		mali-supply = <&vdd_mali>;
+		operating-points-v2 = <&gpu_opp_table>;
+		power-domains = <&pwrc PWRC_T7_MALI_TOP_ID>;
+		resets = <&reset RESET_MALI_CAPB3>, <&reset RESET_MALI>;
+		#cooling-cells = <2>;
+
+		assigned-clocks = <&clkc_periphs CLKID_MALI_0_SEL>,
+				  <&clkc_periphs CLKID_MALI_0>,
+				  <&clkc_periphs CLKID_MALI>;
+		assigned-clock-parents = <&fdiv2p5>,
+					 <0>,
+					 <&clkc_periphs CLKID_MALI_0>;
+		assigned-clock-rates = <0>, <800000000>, <0>;
+		status = "okay";
 	};
 };
 
