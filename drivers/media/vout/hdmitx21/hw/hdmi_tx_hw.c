@@ -779,23 +779,24 @@ static void hdmitx_phy_pre_init(struct hdmitx_dev *hdev)
 static void set_phy_by_mode(u32 mode)
 {
 	struct hdmitx_dev *hdev = get_hdmitx21_device();
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
-	u32 tmds_clk = 0;
-#endif
 
 	switch (hdev->tx_hw.chip_data->chip_type) {
 	case MESON_CPU_ID_S1A:
 		set21_phy_by_mode_s1a(mode);
 		break;
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	case MESON_CPU_ID_T7:
 		set21_phy_by_mode_t7(mode);
 		break;
+#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	case MESON_CPU_ID_S5:
+	{
+		u32 tmds_clk;
+
 		tmds_clk = hdev->tx_comm.fmt_para.tmds_clk;
 		HDMITX_INFO("%s[%d] tmds_clk %d\n", __func__, __LINE__, tmds_clk);
 		hdmitx_set_s5_phypara(hdev->frl_rate, tmds_clk);
 		break;
+	}
 	case MESON_CPU_ID_S7D:
 		set21_phy_by_mode_s7d(mode);
 		break;

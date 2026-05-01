@@ -178,11 +178,9 @@ static void set_hpll_clk_out(u32 clk)
 	case MESON_CPU_ID_S1A:
 		set21_s1a_hpll_clk_out(frac_rate, clk);
 		break;
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	case MESON_CPU_ID_T7:
 		set21_t7_hpll_clk_out(frac_rate, clk);
 		break;
-#endif
 	default:
 		break;
 	}
@@ -195,6 +193,9 @@ void hdmitx21_clks_gate_ctrl(bool en)
 	struct hdmitx_dev *hdev = get_hdmitx21_device();
 
 	switch (hdev->tx_hw.chip_data->chip_type) {
+	case MESON_CPU_ID_T7:
+		hdmitx_t7_clock_gate_ctrl(en);
+		break;
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	case MESON_CPU_ID_S7:
 		hdmitx_s7_clock_gate_ctrl(hdev, en);
@@ -204,9 +205,6 @@ void hdmitx21_clks_gate_ctrl(bool en)
 		break;
 	case MESON_CPU_ID_S5:
 		hdmitx_s5_clock_gate_ctrl(hdev, en);
-		break;
-	case MESON_CPU_ID_T7:
-		hdmitx_t7_clock_gate_ctrl(en);
 		break;
 #endif
 	case MESON_CPU_ID_S1A:
@@ -223,10 +221,10 @@ static void set_hpll_sspll(enum hdmi_vic vic)
 	struct hdmitx_dev *hdev = get_hdmitx21_device();
 
 	switch (hdev->tx_hw.chip_data->chip_type) {
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	case MESON_CPU_ID_T7:
 		set21_hpll_sspll_t7(vic);
 		break;
+#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	case MESON_CPU_ID_S5:
 		set21_hpll_sspll_s5(vic);
 		break;

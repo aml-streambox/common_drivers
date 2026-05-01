@@ -100,10 +100,6 @@ static struct codecio_device_data_s codecio_t5d = {
 	.cpu_id = MESON_CPU_MAJOR_ID_T5D,
 };
 
-static struct codecio_device_data_s codecio_t7 = {
-	.cpu_id = MESON_CPU_MAJOR_ID_T7,
-};
-
 static struct codecio_device_data_s codecio_s4 = {
 	.cpu_id = MESON_CPU_MAJOR_ID_S4,
 };
@@ -164,6 +160,10 @@ static struct codecio_device_data_s codecio_s1a = {
 	.cpu_id = MESON_CPU_MAJOR_ID_S1A,
 };
 #endif
+
+static struct codecio_device_data_s codecio_t7 = {
+	.cpu_id = MESON_CPU_MAJOR_ID_T7,
+};
 
 static const struct of_device_id codec_io_dt_match[] = {
 #ifndef CONFIG_AMLOGIC_C3_REMOVE
@@ -244,10 +244,6 @@ static const struct of_device_id codec_io_dt_match[] = {
 		.data = &codecio_t5d,
 	},
 	{
-		.compatible = "amlogic, meson-t7, codec-io",
-		.data = &codecio_t7,
-	},
-	{
 		.compatible = "amlogic, meson-s4, codec-io",
 		.data = &codecio_s4,
 	},
@@ -307,6 +303,10 @@ static const struct of_device_id codec_io_dt_match[] = {
 		.data = &codecio_s1a,
 	},
 #endif
+	{
+		.compatible = "amlogic, meson-t7, codec-io",
+		.data = &codecio_t7,
+	},
 	{},
 };
 
@@ -858,15 +858,21 @@ static int __init codec_io_probe(struct platform_device *pdev)
 	}
 
 	for (i = CODECIO_CBUS_BASE; i < CODECIO_BUS_MAX; i++) {
+		memset(&res, 0, sizeof(res));
 		if (of_address_to_resource(pdev->dev.of_node, i, &res)) {
+			codecio_reg_map[i] = NULL;
+			codecio_reg_start[i] = 0;
 			pr_debug("i=%d, skip ioremap\n", i);
+			continue;
 		}
-		if (res.start != 0) {
+
+		if (res.start != 0 && resource_size(&res) != 0) {
 			codecio_reg_map[i] =
 				ioremap(res.start, resource_size(&res));
 			codecio_reg_start[i] = res.start;
 			if (!codecio_reg_map[i]) {
-				pr_err("cannot map codec_io registers\n");
+				pr_err("cannot map codec_io resource %d start=%pa size=%pa\n",
+				       i, &res.start, &res.end);
 				return -ENOMEM;
 			}
 			pr_debug("codec map io source 0x%lx,size=%d to 0x%lx\n",
@@ -907,7 +913,7 @@ int __init codec_io_init(void)
 	ret = platform_driver_probe(&codec_io_platform_driver,
 				    codec_io_probe);
 	if (ret) {
-		pr_err("Unable to register codec_io driver\n");
+		pr_err("Unable to register codec_io driver: %d\n", ret);
 		return ret;
 	}
 
@@ -916,4 +922,3 @@ int __init codec_io_init(void)
 
 module_param(regs_cmd_debug, uint, 0664);
 MODULE_PARM_DESC(regs_cmd_debug, "\n register commands sequence debug.\n");
-

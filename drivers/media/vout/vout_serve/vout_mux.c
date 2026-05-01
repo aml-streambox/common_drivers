@@ -302,6 +302,7 @@ static void vout_viu_mux_update_default_txhd2(int index, unsigned int mux_sel)
 	vout_vcbus_setb(VPU_VIU_VENC_MUX_CTRL, 0, 0, 4);
 	vout_vcbus_setb(VPU_VENCX_CLK_CTRL, 0, 0, 3);
 }
+#endif
 
 static void vout_viu_mux_update_t7(int index, unsigned int mux_sel)
 {
@@ -348,6 +349,7 @@ static void vout_viu_mux_update_t7(int index, unsigned int mux_sel)
 	}
 }
 
+#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 static void vout_viu_mux_update_t3(int index, unsigned int mux_sel)
 {
 	unsigned int viu_bit = 0xff, venc_idx;
@@ -389,6 +391,7 @@ static void vout_viu_mux_update_t3(int index, unsigned int mux_sel)
 			vout_vcbus_read(VPU_VIU_VENC_MUX_CTRL));
 	}
 }
+#endif
 
 static void vout_viu_mux_clear_t7(int index, unsigned int mux_sel)
 {
@@ -411,7 +414,6 @@ static void vout_viu_mux_clear_t7(int index, unsigned int mux_sel)
 		VOUTPR("%s: update viu_mux reg=0x%x\n", __func__, reg_value);
 	}
 }
-#endif
 
 void vout_viu_mux_update(int index, unsigned int mux_sel)
 {
@@ -441,15 +443,6 @@ static struct vout_mux_data_s vout_mux_match_data = {
 	.clear_viu_mux = NULL,
 };
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
-static struct vout_mux_data_s vout_mux_match_data_txhd2 = {
-	.msr_clk = NULL,
-	.vs_measure = vout_vs_measure_dft,
-	.msr_ctrl_init = vout_meas_ctrl_init_dft,
-	.update_viu_mux = vout_viu_mux_update_default_txhd2,
-	.clear_viu_mux = NULL,
-};
-
 static struct vout_mux_data_s vout_mux_match_data_t7 = {
 	.msr_clk = NULL,
 	.vs_measure = vout_vs_measure_dft,
@@ -457,6 +450,15 @@ static struct vout_mux_data_s vout_mux_match_data_t7 = {
 	.msr_ctrl_init = vout_meas_ctrl_init_dft,
 	.update_viu_mux = vout_viu_mux_update_t7,
 	.clear_viu_mux = vout_viu_mux_clear_t7,
+};
+
+#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+static struct vout_mux_data_s vout_mux_match_data_txhd2 = {
+	.msr_clk = NULL,
+	.vs_measure = vout_vs_measure_dft,
+	.msr_ctrl_init = vout_meas_ctrl_init_dft,
+	.update_viu_mux = vout_viu_mux_update_default_txhd2,
+	.clear_viu_mux = NULL,
 };
 
 static struct vout_mux_data_s vout_mux_match_data_t3 = {
@@ -492,11 +494,11 @@ static const struct of_device_id vout_mux_dt_match_table[] = {
 		.compatible = "amlogic, vout_mux",
 		.data = &vout_mux_match_data,
 	},
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	{
 		.compatible = "amlogic, vout_mux-t7",
 		.data = &vout_mux_match_data_t7,
 	},
+#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	{
 		.compatible = "amlogic, vout_mux-t3",
 		.data = &vout_mux_match_data_t3,

@@ -7,7 +7,6 @@
 #include <linux/delay.h>
 #include "common.h"
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 #define WAIT_FOR_PLL_LOCKED(_reg) \
 	do { \
 		u32 st = 0; \
@@ -358,7 +357,6 @@ void set21_t7_hpll_clk_out(u32 frac_rate, u32 clk)
 		break;
 	}
 }
-#endif
 
 void set21_hpll_od1_t7(u32 div)
 {
@@ -432,7 +430,6 @@ void hdmitx21_sys_reset_t7(void)
 	hd21_write_reg(RESETCTRL_RESET0, 1 << 16); /* hdmitx_apb */
 }
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 void set21_phy_by_mode_t7(u32 mode)
 {
 	switch (mode) {
@@ -497,5 +494,3 @@ void hdmitx_t7_clock_gate_ctrl(bool en)
 		hd21_set_reg_bits(ANACTRL_HDMIPLL_CTRL0, 0, 28, 1);
 	}
 }
-
-#endif
