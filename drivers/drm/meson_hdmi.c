@@ -266,6 +266,8 @@ static bool meson_hdmitx_test_color_attr(struct hdmitx_common *common,
 		if (attr_list->colorformat == test_attr->colorformat &&
 			attr_list->bitdepth == test_attr->bitdepth) {
 			memset(&comm_state, 0, sizeof(comm_state));
+			comm_state.state_sequence_id =
+				hdmitx_get_hpd_hw_sequence_id(common);
 			build_hdmitx_attr_str(attr_str,
 				attr_list->colorformat, attr_list->bitdepth);
 			if (!hdmitx_common_validate_mode_locked(common, &comm_state, outputmode,
@@ -304,6 +306,8 @@ static int meson_hdmitx_decide_color_attr
 		if (attr_list->colorformat == HDMI_COLORSPACE_RESERVED6)
 			break;
 		memset(&comm_state, 0, sizeof(comm_state));
+		comm_state.state_sequence_id =
+			hdmitx_get_hpd_hw_sequence_id(common);
 		build_hdmitx_attr_str(attr_str,
 			attr_list->colorformat, attr_list->bitdepth);
 		if (!hdmitx_common_validate_mode_locked(common, &comm_state, outputmode,
@@ -319,7 +323,7 @@ static int meson_hdmitx_decide_color_attr
 	} while (attr_list++);
 	if (attr_list->colorformat == HDMI_COLORSPACE_RESERVED6) {
 		DRM_INFO("%s no attr found, reset to 444,8bit.\n", __func__);
-		attr->colorformat = HDMI_COLORSPACE_RGB;
+		attr->colorformat = HDMI_COLORSPACE_YUV444;
 		attr->bitdepth = 8;
 	}
 
@@ -967,7 +971,7 @@ void meson_hdmitx_reset(struct drm_connector *connector)
 	hdmitx_state->base.content_protection = am_hdmi_info.hdcp_request_content_protection;
 
 	hdmitx_state->pref_hdr_policy = MESON_PREF_DV;
-	hdmitx_state->color_attr_para.colorformat = HDMI_COLORSPACE_RGB;
+	hdmitx_state->color_attr_para.colorformat = HDMI_COLORSPACE_YUV444;
 	hdmitx_state->color_attr_para.bitdepth = 8;
 
 	/*drm api need update state, so need delay attach when create state.*/

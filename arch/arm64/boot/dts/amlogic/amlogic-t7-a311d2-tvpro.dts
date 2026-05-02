@@ -699,6 +699,8 @@
 &drm_subsystem {
 	status = "okay";
 	memory-region = <&logo_reserved>;
+	/* Disable AFBC scanout while validating the T7 desktop color path. */
+	osd_afbc_mask = <0>;
 };
 
 &drm_vpu {
