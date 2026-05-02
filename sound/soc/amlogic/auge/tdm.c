@@ -144,6 +144,9 @@ struct aml_tdm {
 	struct regulator *regulator_vcc5v;
 	int suspend_clk_off;
 	int tdm_in_src;
+	bool playback_48k_only;
+	bool frddr_warmup_once;
+	bool frddr_warmed;
 #ifdef CONFIG_AMLOGIC_ZAPPER_CUT
 	unsigned char *temp_buffer;
 	unsigned int vol_index;
@@ -175,6 +178,12 @@ static const struct snd_pcm_hardware aml_tdm_hardware = {
 	.rate_max = 192000,
 	.channels_min = 1,
 	.channels_max = 32,
+};
+
+static const unsigned int aml_tdm_48k_rates[] = { 48000 };
+static const struct snd_pcm_hw_constraint_list aml_tdm_48k_rate_constraint = {
+	.count = ARRAY_SIZE(aml_tdm_48k_rates),
+	.list = aml_tdm_48k_rates,
 };
 
 static inline enum toddr_src aml_tdm_id2src(int id)
@@ -1349,6 +1358,15 @@ static int aml_tdm_open(struct snd_soc_component *component, struct snd_pcm_subs
 	int ret = 0;
 
 	snd_soc_set_runtime_hwparams(substream, &aml_tdm_hardware);
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK &&
+	    p_tdm->playback_48k_only) {
+		ret = snd_pcm_hw_constraint_list(runtime, 0,
+			SNDRV_PCM_HW_PARAM_RATE,
+			&aml_tdm_48k_rate_constraint);
+		if (ret)
+			return ret;
+	}
+
 	snd_pcm_lib_preallocate_pages(substream, SNDRV_DMA_TYPE_DEV,
 		dev, TDM_BUFFER_BYTES / 2, TDM_BUFFER_BYTES);
 
@@ -1460,6 +1478,25 @@ static int aml_tdm_prepare(struct snd_soc_component *component, struct snd_pcm_s
 
 		aml_frddr_set_buf(fr, start_addr, end_addr);
 		aml_frddr_set_intrpt(fr, int_addr);
+		aml_frddr_ack_irq(fr, MEMIF_INT_ADDR_FINISH |
+			MEMIF_INT_ADDR_INT | MEMIF_INT_COUNT_REPEAT |
+			MEMIF_INT_COUNT_ONCE | MEMIF_INT_FIFO_ZERO |
+			MEMIF_INT_FIFO_DEPTH);
+
+		if (p_tdm->frddr_warmup_once && !p_tdm->frddr_warmed) {
+			aml_frddr_enable(fr, true);
+			udelay(200);
+			aml_frddr_enable(fr, false);
+			aml_frddr_reset(fr);
+			aml_frddr_set_fifos(fr, fr->chipinfo->fifo_depth, threshold);
+			aml_frddr_set_buf(fr, start_addr, end_addr);
+			aml_frddr_set_intrpt(fr, int_addr);
+			aml_frddr_ack_irq(fr, MEMIF_INT_ADDR_FINISH |
+				MEMIF_INT_ADDR_INT | MEMIF_INT_COUNT_REPEAT |
+				MEMIF_INT_COUNT_ONCE | MEMIF_INT_FIFO_ZERO |
+				MEMIF_INT_FIFO_DEPTH);
+			p_tdm->frddr_warmed = true;
+		}
 	} else {
 		struct toddr *to = p_tdm->tddr;
 
@@ -2691,6 +2728,10 @@ static int aml_tdm_platform_probe(struct platform_device *pdev)
 		pr_debug("TDM id %d i2s2hdmi:%d\n",
 			p_tdm->id,
 			p_tdm->i2s2hdmitx);
+	p_tdm->playback_48k_only = of_property_read_bool(node,
+		"amlogic,playback-48k-only");
+	p_tdm->frddr_warmup_once = of_property_read_bool(node,
+		"amlogic,frddr-warmup-once");
 
 	if (p_tdm->id == TDM_LB) {
 		ret = of_property_read_u32(node, "lb-src-sel",

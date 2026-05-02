@@ -200,15 +200,22 @@
 
 	audio_hifi_pll: audio-hifi-pll-clk {
 		compatible = "fixed-clock";
-		clock-frequency = <500000000>;
+		clock-frequency = <491520000>;
 		clock-output-names = "hifi_pll";
 		#clock-cells = <0>;
 	};
 
 	audio_mpll0: audio-mpll0-clk {
 		compatible = "fixed-clock";
-		clock-frequency = <500000000>;
+		clock-frequency = <451584000>;
 		clock-output-names = "mpll0";
+		#clock-cells = <0>;
+	};
+
+	audio_mpll1_cd: audio-mpll1-cd-clk {
+		compatible = "fixed-clock";
+		clock-frequency = <451584000>;
+		clock-output-names = "mpll1_cd";
 		#clock-cells = <0>;
 	};
 
@@ -222,13 +229,14 @@
 	ml_sound: auge-sound {
 		compatible = "amlogic, auge-sound-card";
 		aml-audio-card,name = "AML-AUGESOUND";
+		avout_mute-gpios = <&gpio GPIOT_23 GPIO_ACTIVE_HIGH>;
 		interrupts = <GIC_SPI 51 IRQ_TYPE_EDGE_RISING>;
 		interrupt-names = "audio_exception64";
 		#address-cells = <1>;
 		#size-cells = <0>;
 		status = "okay";
 
-		ml-audio-card,dai-link@0 {
+		aml-audio-card,dai-link@0 {
 			reg = <0>;
 			format = "i2s";
 			mclk-fs = <256>;
@@ -251,21 +259,6 @@
 			};
 		};
 
-		ml-audio-card,dai-link@1 {
-			reg = <1>;
-			mclk-fs = <128>;
-			continuous-clock;
-			suffix-name = "alsaPORT-spdif";
-
-			cpu {
-				sound-dai = <&spdifa>;
-				system-clock-frequency = <6144000>;
-			};
-
-			codec {
-				sound-dai = <&dummy_codec>;
-			};
-		};
 	};
 
 	vddao_3v3: regulator-vddao-3v3 {
@@ -919,7 +912,7 @@
 		clocks = <&clkaudio CLKID_AUDIO_MCLK_B>,
 			 <&clkaudio CLKID_AUDIO_MCLK_PAD1>,
 			 <&audio_hifi_pll>,
-			 <&mpll1>,
+			 <&audio_mpll1_cd>,
 			 <&clkaudio CLKID_AUDIO_GATE_TDMINB>,
 			 <&clkaudio CLKID_AUDIO_GATE_TDMOUTB>;
 		clock-names = "mclk", "mclk_pad", "clk_srcpll", "clk_src_cd",
@@ -928,8 +921,9 @@
 		pinctrl-names = "tdm_pins";
 		pinctrl-0 = <&mclk_1_pins>, <&tdm_b_pins>, <&tdm_d4_pins>,
 			    <&tdm_d5_pins>, <&tdmb_clk_pins>;
-		samesource_sel = <3>;
 		tdmin-src-name = "acodec_adc";
+		amlogic,playback-48k-only;
+		amlogic,frddr-warmup-once;
 		start_clk_enable = <1>;
 		ctrl_gain = <1>;
 		clk_tuning_enable = <1>;
@@ -956,6 +950,23 @@
 		clk_tuning_enable = <1>;
 		status = "okay";
 	};
+};
+
+&acodec {
+	dat0_ch_sel = <0>;
+};
+
+&amlvecm {
+	status = "okay";
+	gamma_en = <0>;
+	wb_en = <0>;
+	cm_en = <0>;
+	wb_sel = <0>;
+	vlock_en = <0>;
+	vlock_mode = <0x8>;
+	vlock_pll_m_limit = <1>;
+	vlock_line_limit = <2>;
+	vrr_priority = <1>;
 };
 
 &drm_subsystem {

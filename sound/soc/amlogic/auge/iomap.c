@@ -39,18 +39,20 @@ static void register_debug(u32 base_type, unsigned int reg, unsigned int val)
 
 static int aml_snd_read(u32 base_type, unsigned int reg, unsigned int *val)
 {
-	if (base_type < IO_MAX) {
+	if (base_type < IO_MAX && aml_snd_reg_map[base_type]) {
 		*val = readl((aml_snd_reg_map[base_type] + (reg << 2)));
 
 		return 0;
 	}
 
+	pr_err_ratelimited("snd reg map %u unavailable for read reg %x\n",
+				   base_type, reg);
 	return -1;
 }
 
 static void aml_snd_write(u32 base_type, unsigned int reg, unsigned int val)
 {
-	if (base_type < IO_MAX) {
+	if (base_type < IO_MAX && aml_snd_reg_map[base_type]) {
 		writel(val, (aml_snd_reg_map[base_type] + (reg << 2)));
 #ifdef DEBUG
 		register_debug(base_type, reg, val);
@@ -64,7 +66,7 @@ static void aml_snd_write(u32 base_type, unsigned int reg, unsigned int val)
 static void aml_snd_update_bits(u32 base_type, unsigned int reg,
 				unsigned int mask, unsigned int val)
 {
-	if (base_type < IO_MAX) {
+	if (base_type < IO_MAX && aml_snd_reg_map[base_type]) {
 		unsigned int tmp, orig;
 
 		if (aml_snd_read(base_type, reg, &orig) == 0) {

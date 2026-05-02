@@ -533,6 +533,13 @@
 		status = "okay";
 	};
 
+	amlvecm: amlvecm {
+		compatible = "amlogic, vecm-t7", "amlogic, vecm";
+		dev_name = "aml_vecm";
+		clocks = <&display_clkc CLKID_T7_DISPLAY_VID_LOCK>;
+		clock-names = "cts_vid_lock_clk";
+	};
+
 	soc {
 		compatible = "simple-bus";
 		#address-cells = <2>;
@@ -569,6 +576,7 @@
 			tdmin_index = <1>;
 			dat0_ch_sel = <1>;
 			lane_offset = <8>;
+			amlogic,skip-reset-startup;
 			status = "okay";
 		};
 
@@ -584,10 +592,10 @@
 			chip_id = <0x36>;
 			status = "okay";
 
-			clkaudio: clock-controller@0 {
+			clkaudio: audio_clocks {
 				compatible = "amlogic, t7-audio-clocks";
-				reg = <0x0 0x0 0x0 0xb0>;
 				#clock-cells = <1>;
+				reg = <0x0 0x0 0x0 0xb0>;
 				status = "okay";
 			};
 
@@ -613,6 +621,42 @@
 			pinctrl_audio: pinctrl {
 				compatible = "amlogic, audio-pinctrl";
 				status = "okay";
+			};
+		};
+
+		aml_snd_iomap {
+			compatible = "amlogic, snd-iomap";
+			status = "okay";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+
+			pdm_bus {
+				reg = <0x0 0xfe331000 0x0 0x400>;
+			};
+
+			audiobus_base {
+				reg = <0x0 0xfe330000 0x0 0x1000>;
+			};
+
+			audiolocker_base {
+				reg = <0x0 0xfe331400 0x0 0x400>;
+			};
+
+			eqdrc_base {
+				reg = <0x0 0xfe332000 0x0 0x1000>;
+			};
+
+			vad_base {
+				reg = <0x0 0xfe331800 0x0 0x400>;
+			};
+
+			resampleA_base {
+				reg = <0x0 0xfe331c00 0x0 0x104>;
+			};
+
+			resampleB_base {
+				reg = <0x0 0xfe334000 0x0 0x104>;
 			};
 		};
 

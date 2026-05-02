@@ -22,6 +22,7 @@
 #define T7_DCLK_VPU_CLK_CTRL	0x08
 #define T7_DCLK_VPU_CLKB_CTRL	0x0c
 #define T7_DCLK_VPU_CLKC_CTRL	0x10
+#define T7_DCLK_VID_LOCK_CLK_CTRL	0x14
 #define T7_DCLK_VAPBCLK_CTRL	0x1c
 #define T7_DCLK_HTX_CLK_CTRL0	0x3c
 
@@ -60,6 +61,10 @@ static const struct clk_parent_data t7_hdmitx_parent_data[] = {
 	{ .fw_name = "fdiv4" },
 	{ .fw_name = "fdiv3" },
 	{ .fw_name = "fdiv5" },
+};
+
+static const struct clk_parent_data t7_vid_lock_parent_data[] = {
+	{ .fw_name = "xtal" },
 };
 
 static const char * const t7_vpu_mux_parent_names[] = {
@@ -430,6 +435,26 @@ static int t7_display_register_hdmitx(struct device *dev,
 		T7_DCLK_HTX_CLK_CTRL0, 24, CLK_SET_RATE_PARENT);
 }
 
+static int t7_display_register_vid_lock(struct device *dev,
+					struct t7_display_clkc *clkc)
+{
+	struct clk_hw *hw;
+
+	hw = devm_clk_hw_register_divider_parent_data(dev,
+		"t7_display_vid_lock_div", &t7_vid_lock_parent_data[0], 0,
+		clkc->base + T7_DCLK_VID_LOCK_CLK_CTRL, 0, 7, 0,
+		&clkc->lock);
+	if (IS_ERR(hw))
+		return dev_err_probe(dev, PTR_ERR(hw),
+				     "failed to register t7_display_vid_lock_div\n");
+
+	clkc->data->hws[CLKID_T7_DISPLAY_VID_LOCK_DIV] = hw;
+
+	return t7_display_add_gate(dev, clkc, CLKID_T7_DISPLAY_VID_LOCK,
+		"t7_display_vid_lock", T7_HW(VID_LOCK_DIV),
+		T7_DCLK_VID_LOCK_CLK_CTRL, 7, CLK_SET_RATE_PARENT);
+}
+
 static int t7_display_clkc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -477,6 +502,10 @@ static int t7_display_clkc_probe(struct platform_device *pdev)
 		return ret;
 
 	ret = t7_display_register_hdmitx(dev, clkc);
+	if (ret)
+		return ret;
+
+	ret = t7_display_register_vid_lock(dev, clkc);
 	if (ret)
 		return ret;
 

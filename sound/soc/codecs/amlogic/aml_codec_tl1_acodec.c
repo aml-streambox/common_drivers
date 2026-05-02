@@ -31,6 +31,10 @@
 #include "../../../soc/amlogic/auge/regs.h"
 #include "aml_codec_tl1_acodec.h"
 
+static bool skip_init_work;
+module_param(skip_init_work, bool, 0644);
+MODULE_PARM_DESC(skip_init_work, "Skip TL1/T3 acodec hardware init work during component probe");
+
 struct tl1_acodec_chipinfo {
 	int id;
 	bool is_bclk_cap_inv;
@@ -65,6 +69,7 @@ struct tl1_acodec_priv {
 	int dac_output_invert;
 	int lane_offset;
 	bool txhd2_version;
+	bool skip_reset_startup;
 	int adc_pga_gain;
 	/* store user setting */
 	u32 user_setting[ACODEC_REG_NUM];
@@ -732,6 +737,11 @@ static void tl1_acodec_release_fast_mode_work_func(struct work_struct *p_work)
 
 	pr_debug("%s\n", __func__);
 	tl1_acodec_set_toacodec(aml_acodec);
+	if (aml_acodec->skip_reset_startup) {
+		tl1_acodec_reg_init(component);
+		goto standby;
+	}
+
 	/*
 	 * reset audio codec register
 	 * after init, need do reset again.
@@ -745,6 +755,7 @@ static void tl1_acodec_release_fast_mode_work_func(struct work_struct *p_work)
 	}
 
 	aml_acodec->component = component;
+standby:
 	tl1_acodec_dai_set_bias_level(component, SND_SOC_BIAS_STANDBY);
 }
 
@@ -824,6 +835,7 @@ static int tl1_acodec_probe(struct snd_soc_component *component)
 {
 	struct tl1_acodec_priv *aml_acodec =
 		snd_soc_component_get_drvdata(component);
+	bool skip_work;
 	int ret = 0;
 
 	if (!aml_acodec) {
@@ -832,8 +844,15 @@ static int tl1_acodec_probe(struct snd_soc_component *component)
 	}
 	aml_acodec->component = component;
 	aml_acodec->rst = devm_reset_control_get(component->dev, "acodec");
+	aml_acodec->skip_reset_startup = of_property_read_bool(component->dev->of_node,
+		"amlogic,skip-reset-startup");
 	INIT_WORK(&aml_acodec->work, tl1_acodec_release_fast_mode_work_func);
-	schedule_work(&aml_acodec->work);
+	skip_work = skip_init_work ||
+		of_property_read_bool(component->dev->of_node, "amlogic,skip-init-work");
+	if (skip_work)
+		dev_warn(component->dev, "skip TL1 acodec init work\n");
+	else
+		schedule_work(&aml_acodec->work);
 
 	if (aml_acodec->chipinfo->dac_num == 4) {
 		ret = snd_soc_add_component_controls(component,

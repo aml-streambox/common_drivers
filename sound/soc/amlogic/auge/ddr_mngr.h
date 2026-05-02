@@ -336,6 +336,7 @@ int aml_audio_unregister_frddr(struct device *dev, void *data);
 int aml_frddr_set_buf(struct frddr *fr, unsigned int start,
 			unsigned int end);
 int aml_frddr_set_intrpt(struct frddr *fr, unsigned int intrpt);
+void aml_frddr_ack_irq(struct frddr *fr, int status);
 unsigned int aml_frddr_get_position(struct frddr *fr);
 void aml_frddr_enable(struct frddr *fr, bool enable);
 void aml_frddr_select_dst(struct frddr *fr, enum frddr_dest);
@@ -379,4 +380,3 @@ void get_toddr_bits_config(enum toddr_src src,
 int aml_check_and_release_sharebuffer(struct frddr *fr, enum frddr_dest ss_sel);
 
 #endif
-

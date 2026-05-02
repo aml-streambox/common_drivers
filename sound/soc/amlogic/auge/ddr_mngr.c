@@ -1520,6 +1520,17 @@ int aml_frddr_set_intrpt(struct frddr *fr, unsigned int intrpt)
 	return 0;
 }
 
+void aml_frddr_ack_irq(struct frddr *fr, int status)
+{
+	struct aml_audio_controller *actrl = fr->actrl;
+	unsigned int reg_base = fr->reg_base;
+	unsigned int reg;
+
+	reg = calc_frddr_address(EE_AUDIO_FRDDR_A_CTRL1, reg_base);
+	aml_audiobus_update_bits(actrl, reg, MEMIF_INT_MASK, status);
+	aml_audiobus_update_bits(actrl, reg, MEMIF_INT_MASK, 0);
+}
+
 unsigned int aml_frddr_get_position(struct frddr *fr)
 {
 	struct aml_audio_controller *actrl = fr->actrl;
@@ -2447,6 +2458,12 @@ static const struct of_device_id aml_ddr_mngr_device_id[] = {
 		.compatible = "amlogic, s1a-audio-ddr-manager",
 		.data       = &s1a_ddr_chipinfo,
 	},
+#ifdef CONFIG_AMLOGIC_ZAPPER_CUT
+	{
+		.compatible = "amlogic, t3-audio-ddr-manager",
+		.data       = &t3_ddr_chipinfo,
+	},
+#endif
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	{
 		.compatible = "amlogic, t3-audio-ddr-manager",
