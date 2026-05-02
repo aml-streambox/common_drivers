@@ -652,7 +652,8 @@ void spdifout_play_with_zerodata(unsigned int spdif_id, bool reenable, int separ
 		spdif_set_validity(0, spdif_id);
 
 		/* notify hdmitx audio */
-#if (defined(CONFIG_AMLOGIC_HDMITX) || defined(CONFIG_AMLOGIC_HDMITX21))
+#if defined(CONFIG_AMLOGIC_HDMITX) || defined(CONFIG_AMLOGIC_HDMITX21) || \
+	defined(CONFIG_AMLOGIC_ZAPPER_CUT)
 		if (get_spdif_to_hdmitx_id() == spdif_id)
 			aout_notifier_call_chain(AOUT_EVENT_IEC_60958_PCM, &aud_param);
 #endif
@@ -699,4 +700,3 @@ void set_spdif_to_hdmitx_id(int spdif_id)
 	audiobus_update_bits(EE_AUDIO_TOHDMITX_CTRL0,
 			     0x3, spdif_id << 1 | spdif_id);
 }
-

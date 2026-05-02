@@ -219,6 +219,13 @@
 		#clock-cells = <0>;
 	};
 
+	audio_mpll2: audio-mpll2-clk {
+		compatible = "fixed-clock";
+		clock-frequency = <491520000>;
+		clock-output-names = "mpll2";
+		#clock-cells = <0>;
+	};
+
 	audio_fclk_div4: audio-fclk-div4-clk {
 		compatible = "fixed-clock";
 		clock-frequency = <500000000>;
@@ -256,6 +263,59 @@
 
 			codec {
 				sound-dai = <&acodec>;
+			};
+		};
+
+		aml-audio-card,dai-link@1 {
+			reg = <1>;
+			mclk-fs = <128>;
+			continuous-clock;
+			suffix-name = "alsaPORT-spdif";
+
+			cpu {
+				sound-dai = <&spdifa>;
+				system-clock-frequency = <6144000>;
+			};
+
+			codec {
+				sound-dai = <&dummy_codec>;
+			};
+		};
+
+		aml-audio-card,dai-link@2 {
+			reg = <2>;
+			format = "i2s";
+			mclk-fs = <256>;
+			bitclock-master = <&tdmc>;
+			frame-master = <&tdmc>;
+			suffix-name = "alsaPORT-i2s4parser";
+
+			cpu {
+				sound-dai = <&tdmc>;
+				dai-tdm-slot-tx-mask = <1 1>;
+				dai-tdm-slot-rx-mask = <1 1>;
+				dai-tdm-slot-num = <2>;
+				dai-tdm-slot-width = <32>;
+				system-clock-frequency = <12288000>;
+			};
+
+			codec {
+				sound-dai = <&dummy_codec>;
+			};
+		};
+
+		aml-audio-card,dai-link@3 {
+			reg = <3>;
+			mclk-fs = <128>;
+			suffix-name = "alsaPORT-spdifb";
+
+			cpu {
+				sound-dai = <&spdifb>;
+				system-clock-frequency = <6144000>;
+			};
+
+			codec {
+				sound-dai = <&dummy_codec>;
 			};
 		};
 
@@ -921,12 +981,39 @@
 		pinctrl-names = "tdm_pins";
 		pinctrl-0 = <&mclk_1_pins>, <&tdm_b_pins>, <&tdm_d4_pins>,
 			    <&tdm_d5_pins>, <&tdmb_clk_pins>;
+		samesource_sel = <3>;
 		tdmin-src-name = "acodec_adc";
 		amlogic,playback-48k-only;
 		amlogic,frddr-warmup-once;
 		start_clk_enable = <1>;
 		ctrl_gain = <1>;
 		clk_tuning_enable = <1>;
+		status = "okay";
+
+		Channel_Mask {
+			Spdif_samesource_Channel_Mask = "i2s_0/1";
+		};
+	};
+
+	tdmc: tdm@2 {
+		compatible = "amlogic, t7-snd-tdmc";
+		#sound-dai-cells = <0>;
+		dai-tdm-lane-slot-mask-in = <1 1 1 1>;
+		dai-tdm-lane-slot-mask-out = <1 1 1 1>;
+		dai-tdm-clk-sel = <2>;
+		clocks = <&clkaudio CLKID_AUDIO_MCLK_C>,
+			 <&audio_hifi_pll>,
+			 <&audio_mpll2>,
+			 <&clkaudio CLKID_AUDIO_GATE_TDMINC>,
+			 <&clkaudio CLKID_AUDIO_GATE_TDMOUTC>;
+		clock-names = "mclk", "clk_srcpll", "clk_src_cd",
+			      "gate_in", "gate_out";
+		src-clk-freq = <491520000>;
+		tdmin-src-name = "hdmirx";
+		i2s2hdmi = <1>;
+		suspend-clk-off = <1>;
+		amlogic,playback-48k-only;
+		amlogic,frddr-warmup-once;
 		status = "okay";
 	};
 
@@ -948,6 +1035,20 @@
 		interrupt-names = "irq_spdifin";
 		suspend-clk-off = <1>;
 		clk_tuning_enable = <1>;
+		status = "okay";
+	};
+
+	spdifb: spdif@1 {
+		compatible = "amlogic, tm2-revb-snd-spdif-b";
+		#sound-dai-cells = <0>;
+		clocks = <&audio_hifi_pll>,
+			 <&audio_mpll2>,
+			 <&clkaudio CLKID_AUDIO_GATE_SPDIFOUT_B>,
+			 <&clkaudio CLKID_AUDIO_SPDIFOUT_B>;
+		clock-names = "sysclk", "clk_src_cd",
+			      "gate_spdifout", "clk_spdifout";
+		suspend-clk-off = <1>;
+		src-clk-freq = <491520000>;
 		status = "okay";
 	};
 };

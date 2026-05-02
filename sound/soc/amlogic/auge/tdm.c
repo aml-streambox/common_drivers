@@ -1830,7 +1830,8 @@ static int aml_dai_tdm_prepare(struct snd_pcm_substream *substream,
 			iec_get_channel_status_info(&chsts, codec_type,
 				runtime->rate, bit_depth, 0);
 			set_aud_param_ch_status(&chsts, &aud_param);
-#if (defined(CONFIG_AMLOGIC_HDMITX) || defined(CONFIG_AMLOGIC_HDMITX21))
+#if defined(CONFIG_AMLOGIC_HDMITX) || defined(CONFIG_AMLOGIC_HDMITX21) || \
+	defined(CONFIG_AMLOGIC_ZAPPER_CUT)
 			aout_notifier_call_chain(event_type, &aud_param);
 #endif
 		}

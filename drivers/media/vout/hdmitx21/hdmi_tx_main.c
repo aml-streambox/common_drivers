@@ -41,7 +41,7 @@
 //#include <linux/amlogic/cpu_version.h>
 #include <linux/amlogic/media/vout/vinfo.h>
 #include <linux/amlogic/media/vout/vout_notify.h>
-#if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC)
+#if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC) || defined(CONFIG_AMLOGIC_ZAPPER_CUT)
 #include <linux/amlogic/media/sound/aout_notify.h>
 #endif
 #include <linux/amlogic/media/vout/hdmi_tx_ext.h>
@@ -4047,7 +4047,7 @@ static int drm_hdmitx_get_vrr_mode_group(struct drm_vrr_mode_group *group, int m
 	return j;
 }
 
-#if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC)
+#if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC) || defined(CONFIG_AMLOGIC_ZAPPER_CUT)
 
 static int hdmitx_notify_callback_a(struct notifier_block *block,
 				    unsigned long cmd, void *para);
@@ -4916,7 +4916,7 @@ static int amhdmitx_probe(struct platform_device *pdev)
 	hdmitx_vout_init(tx_comm, &hdev->tx_hw.base);
 	vout_inited = true;
 
-#if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC)
+#if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC) || defined(CONFIG_AMLOGIC_ZAPPER_CUT)
 	if (!hdev->pxp_mode && hdmitx21_uboot_audio_en()) {
 		struct aud_para *audpara = &hdev->tx_comm.cur_audio_param;
 
@@ -5057,7 +5057,7 @@ err_destroy_hpd_wq:
 	cancel_delayed_work_sync(&hdev->work_hpd_plugin);
 	destroy_workqueue(hdev->hdmi_hpd_wq);
 err_vout_uninit:
-#if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC)
+#if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC) || defined(CONFIG_AMLOGIC_ZAPPER_CUT)
 	if (audio_registered)
 		aout_unregister_client(&hdmitx_notifier_nb_a);
 #endif
@@ -5125,7 +5125,7 @@ static void amhdmitx_remove(struct platform_device *pdev)
 	hdev->hpd_event = 0xff;
 	hdmitx_vout_uninit();
 
-#if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC)
+#if IS_ENABLED(CONFIG_AMLOGIC_SND_SOC) || defined(CONFIG_AMLOGIC_ZAPPER_CUT)
 	aout_unregister_client(&hdmitx_notifier_nb_a);
 #endif
 
