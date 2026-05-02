@@ -4,6 +4,7 @@
  */
 
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/clock/amlogic,t7-audio-clk.h>
 #include <dt-bindings/clock/amlogic,t7-display-clkc.h>
 #include <dt-bindings/display/meson-drm-ids.h>
 #include <dt-bindings/power/amlogic,t7-pwrc.h>
@@ -550,6 +551,71 @@
 			interrupts = <GIC_PPI 9 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_HIGH)>;
 		};
 
+		dummy_codec: dummy-codec {
+			compatible = "amlogic, aml_dummy_codec";
+			#sound-dai-cells = <0>;
+			status = "okay";
+		};
+
+		acodec: audio-codec@fe01a000 {
+			compatible = "amlogic, t3_acodec";
+			reg = <0x0 0xfe01a000 0x0 0x1c>;
+			clocks = <&clkc_periphs CLKID_SYS_ACODEC>;
+			clock-names = "acodec_clk";
+			resets = <&reset RESET_ACODEC>;
+			reset-names = "acodec";
+			#sound-dai-cells = <0>;
+			tdmout_index = <1>;
+			tdmin_index = <1>;
+			dat0_ch_sel = <1>;
+			lane_offset = <8>;
+			status = "okay";
+		};
+
+		audiobus: audio-controller@fe330000 {
+			compatible = "amlogic, audio-controller", "simple-bus";
+			reg = <0x0 0xfe330000 0x0 0x3000>;
+			clocks = <&clkc_periphs CLKID_SYS_AUDIO>;
+			clock-names = "pclk";
+			power-domains = <&pwrc PWRC_T7_AUDIO_ID>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges = <0x0 0x0 0x0 0xfe330000 0x0 0x3000>;
+			chip_id = <0x36>;
+			status = "okay";
+
+			clkaudio: clock-controller@0 {
+				compatible = "amlogic, t7-audio-clocks";
+				reg = <0x0 0x0 0x0 0xb0>;
+				#clock-cells = <1>;
+				status = "okay";
+			};
+
+			ddr-manager {
+				compatible = "amlogic, t3-audio-ddr-manager";
+				interrupts = <GIC_SPI 32 IRQ_TYPE_EDGE_RISING>,
+					     <GIC_SPI 33 IRQ_TYPE_EDGE_RISING>,
+					     <GIC_SPI 34 IRQ_TYPE_EDGE_RISING>,
+					     <GIC_SPI 45 IRQ_TYPE_EDGE_RISING>,
+					     <GIC_SPI 40 IRQ_TYPE_EDGE_RISING>,
+					     <GIC_SPI 36 IRQ_TYPE_EDGE_RISING>,
+					     <GIC_SPI 37 IRQ_TYPE_EDGE_RISING>,
+					     <GIC_SPI 38 IRQ_TYPE_EDGE_RISING>,
+					     <GIC_SPI 46 IRQ_TYPE_EDGE_RISING>,
+					     <GIC_SPI 47 IRQ_TYPE_EDGE_RISING>;
+				interrupt-names = "toddr_a", "toddr_b", "toddr_c",
+						  "toddr_d", "toddr_e",
+						  "frddr_a", "frddr_b", "frddr_c",
+						  "frddr_d", "frddr_e";
+				status = "okay";
+			};
+
+			pinctrl_audio: pinctrl {
+				compatible = "amlogic, audio-pinctrl";
+				status = "okay";
+			};
+		};
+
 		apb4: bus@fe000000 {
 			compatible = "simple-bus";
 			reg = <0x0 0xfe000000 0x0 0x480000>;
@@ -626,6 +692,14 @@
 						drive-strength-microamp = <3000>;
 					};
 				};
+
+				pwm_a_pins: pwm-a-pins {
+					mux {
+						groups = "pwm_a";
+						function = "pwm_a";
+						bias-disable;
+					};
+				};
 			};
 
 			gpio_intc: interrupt-controller@4080 {
@@ -636,6 +710,15 @@
 				#interrupt-cells = <2>;
 				amlogic,channel-interrupts =
 					<10 11 12 13 14 15 16 17 18 19 20 21>;
+			};
+
+			pwm_ab: pwm@58000 {
+				compatible = "amlogic,t7-pwm", "amlogic,meson-s4-pwm";
+				reg = <0x0 0x58000 0x0 0x24>;
+				clocks = <&clkc_periphs CLKID_PWM_A>,
+					 <&clkc_periphs CLKID_PWM_B>;
+				#pwm-cells = <3>;
+				status = "okay";
 			};
 
 			uart_a: serial@78000 {

@@ -1652,31 +1652,9 @@ static int aml_write_copy_kernel(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-/* default copy_user ops for write; used for both interleaved and non- modes */
-static int aml_write_copy(struct snd_pcm_substream *substream,
-			      int channel, unsigned long hwoff,
-			      void *buf, unsigned long bytes)
-{
-	if (copy_from_user(aml_get_dma_ptr(substream->runtime, channel, hwoff),
-				(void __user *)buf, bytes))
-		return -EFAULT;
-	return 0;
-}
-
-/* default copy_user ops for read; used for both interleaved and non- modes */
-static int aml_default_read_copy(struct snd_pcm_substream *substream,
-			     int channel, unsigned long hwoff,
-			     void *buf, unsigned long bytes)
-{
-	if (copy_to_user((void __user *)buf,
-			aml_get_dma_ptr(substream->runtime, channel, hwoff), bytes))
-		return -EFAULT;
-	return 0;
-}
-
-static int tdm_copy_user(struct snd_soc_component *component,
+static int tdm_copy(struct snd_soc_component *component,
 	struct snd_pcm_substream *substream, int channel,
-	unsigned long pos, void __user *buf,
+	unsigned long pos, struct iov_iter *iter,
 	unsigned long bytes)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -1686,10 +1664,12 @@ static int tdm_copy_user(struct snd_soc_component *component,
 	int temp_buffer_max_len;
 
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
-		ret = aml_default_read_copy(substream, 0, pos, buf, bytes);
+		if (copy_to_iter(aml_get_dma_ptr(runtime, channel, pos), bytes, iter) != bytes)
+			return -EFAULT;
 	} else {
 		if (p_tdm->vol_index == 100) {
-			ret = aml_write_copy(substream, 0, pos, (void __force *)buf, bytes);
+			if (copy_from_iter(aml_get_dma_ptr(runtime, channel, pos), bytes, iter) != bytes)
+				return -EFAULT;
 		} else {
 			bit_depth = snd_pcm_format_width(runtime->format);
 			temp_buffer_max_len = frames_to_bytes(runtime, runtime->buffer_size);
@@ -1698,11 +1678,11 @@ static int tdm_copy_user(struct snd_soc_component *component,
 				p_tdm->temp_buffer = kzalloc(temp_buffer_max_len, GFP_KERNEL);
 			else
 				memset(p_tdm->temp_buffer, 0x00, temp_buffer_max_len);
-			if (copy_from_user(p_tdm->temp_buffer, (void __user *)buf, bytes))
+			if (copy_from_iter(p_tdm->temp_buffer, bytes, iter) != bytes)
 				return -EFAULT;
 			snd_pcm_volume_set(p_tdm->temp_buffer, bytes_to_frames(runtime, bytes),
 				bit_depth, runtime->channels, p_tdm->vol_index);
-			ret = aml_write_copy_kernel(substream, 0, pos, p_tdm->temp_buffer, bytes);
+			ret = aml_write_copy_kernel(substream, channel, pos, p_tdm->temp_buffer, bytes);
 		}
 	}
 	return ret;
@@ -1711,9 +1691,25 @@ static int tdm_copy_user(struct snd_soc_component *component,
 
 static int aml_soc_tdm_trigger(struct snd_soc_component *component,
 		struct snd_pcm_substream *substream, int cmd);
+static int aml_dai_tdm_probe(struct snd_soc_dai *cpu_dai);
+
+static int aml_tdm_component_probe(struct snd_soc_component *component)
+{
+	struct snd_soc_dai *dai;
+	int ret;
+
+	list_for_each_entry(dai, &component->dai_list, list) {
+		ret = aml_dai_tdm_probe(dai);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
 
 static const struct snd_soc_component_driver aml_tdm_component = {
 	.name           = DRV_NAME,
+	.probe = aml_tdm_component_probe,
 
 	.open = aml_tdm_open,
 	.close = aml_tdm_close,
@@ -1725,7 +1721,7 @@ static const struct snd_soc_component_driver aml_tdm_component = {
 	.pointer = aml_tdm_pointer,
 	.mmap = aml_tdm_mmap,
 #ifdef CONFIG_AMLOGIC_ZAPPER_CUT
-	.copy_user = tdm_copy_user,
+	.copy = tdm_copy,
 #endif
 };
 
@@ -2086,7 +2082,8 @@ static int aml_dai_set_tdm_fmt(struct snd_soc_dai *cpu_dai, unsigned int fmt)
 {
 	struct aml_tdm *p_tdm = snd_soc_dai_get_drvdata(cpu_dai);
 
-	return aml_tdm_set_fmt(p_tdm, fmt, cpu_dai->stream_active[1]);
+	return aml_tdm_set_fmt(p_tdm, fmt,
+				cpu_dai->stream[SNDRV_PCM_STREAM_CAPTURE].active);
 }
 
 static int aml_dai_set_bclk_ratio(struct snd_soc_dai *cpu_dai,
@@ -2324,7 +2321,6 @@ static struct snd_soc_dai_driver aml_tdm_dai[] = {
 	{
 		.name = "TDM-A",
 		.id = 1,
-		.probe = aml_dai_tdm_probe,
 		.playback = {
 		      .channels_min = 1,
 		      .channels_max = 32,
@@ -2343,7 +2339,6 @@ static struct snd_soc_dai_driver aml_tdm_dai[] = {
 	{
 		.name = "TDM-B",
 		.id = 2,
-		.probe = aml_dai_tdm_probe,
 		.playback = {
 		      .channels_min = 1,
 		      .channels_max = 32,
@@ -2362,7 +2357,6 @@ static struct snd_soc_dai_driver aml_tdm_dai[] = {
 	{
 		.name = "TDM-C",
 		.id = 3,
-		.probe = aml_dai_tdm_probe,
 		.playback = {
 		      .channels_min = 1,
 		      .channels_max = 8,
@@ -2381,7 +2375,6 @@ static struct snd_soc_dai_driver aml_tdm_dai[] = {
 	{
 		.name = "TDM-D",
 		.id = 4,
-		.probe = aml_dai_tdm_probe,
 		.playback = {
 		      .channels_min = 1,
 		      .channels_max = 32,

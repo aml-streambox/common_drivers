@@ -15,8 +15,10 @@
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/regmap.h>
+#include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/of_platform.h>
+#include <linux/amlogic/cpu_version.h>
 
 #include "iomapres.h"
 
@@ -71,6 +73,21 @@ int aml_return_chip_id(void)
 {
 	return chip_id;
 }
+
+#if !IS_ENABLED(CONFIG_AMLOGIC_CPU_INFO)
+int get_cpu_type_from_media(void)
+{
+	return chip_id;
+}
+
+unsigned char get_meson_cpu_version(int level)
+{
+	if (level == MESON_CPU_VERSION_LVL_MAJOR)
+		return chip_id;
+
+	return 0;
+}
+#endif
 
 struct aml_audio_ctrl_ops aml_actrl_mmio_ops = {
 	.read		= aml_audio_mmio_read,
@@ -147,8 +164,14 @@ static int register_audio_controller(struct platform_device *pdev,
 static int aml_audio_controller_probe(struct platform_device *pdev)
 {
 	struct aml_audio_controller *actrl;
+	struct clk *pclk;
 	struct device_node *node = pdev->dev.of_node;
 	int ret;
+
+	pclk = devm_clk_get_optional_enabled(&pdev->dev, "pclk");
+	if (IS_ERR(pclk))
+		return dev_err_probe(&pdev->dev, PTR_ERR(pclk),
+				     "failed to enable audio pclk\n");
 
 	actrl = devm_kzalloc(&pdev->dev, sizeof(*actrl), GFP_KERNEL);
 	if (!actrl)

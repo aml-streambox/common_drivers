@@ -128,7 +128,7 @@ enum audio_output_select {
 struct aml_jack {
 	struct snd_soc_jack jack;
 	struct snd_soc_jack_pin pin;
-	struct snd_soc_jack_gpio gpio;
+	int gpio;
 };
 
 struct aml_card_data {
@@ -273,7 +273,7 @@ static int aml_audio_hal_format_set_enum(struct snd_kcontrol *kcontrol,
 
 	p_aml_audio = snd_soc_card_get_drvdata(card);
 
-	audio_send_uevent(&snd->ctl_dev, AUDIO_SPDIF_FMT_EVENT, hal_format);
+	audio_send_uevent(snd->ctl_dev, AUDIO_SPDIF_FMT_EVENT, hal_format);
 	pr_debug("update audio atmos flag! audio_type = %d\n", hal_format);
 
 	if (p_aml_audio->hal_fmt != hal_format)
@@ -573,11 +573,11 @@ static int jack_audio_hp_detect(struct aml_card_data *card_data)
 	int change_cnt = 0;
 
 	card_data->hp_cur_state =
-		gpio_get_value_cansleep(card_data->hp_jack.gpio.gpio);
+		gpio_get_value_cansleep(card_data->hp_jack.gpio);
 	if (card_data->hp_last_state != card_data->hp_cur_state) {
 		while (loop_num < 5) {
 			card_data->hp_cur_state =
-				gpio_get_value_cansleep(card_data->hp_jack.gpio.gpio);
+				gpio_get_value_cansleep(card_data->hp_jack.gpio);
 
 			if (card_data->hp_last_state != card_data->hp_cur_state)
 				change_cnt++;
@@ -602,11 +602,11 @@ static int jack_audio_micphone_detect(struct aml_card_data *card_data)
 	int change_cnt = 0;
 
 	card_data->micphone_cur_state =
-		gpio_get_value_cansleep(card_data->mic_jack.gpio.gpio);
+		gpio_get_value_cansleep(card_data->mic_jack.gpio);
 	if (card_data->micphone_last_state != card_data->micphone_cur_state) {
 		while (loop_num < 5) {
 			card_data->micphone_cur_state =
-				gpio_get_value_cansleep(card_data->mic_jack.gpio.gpio);
+				gpio_get_value_cansleep(card_data->mic_jack.gpio);
 			if (card_data->micphone_last_state !=
 				card_data->micphone_cur_state)
 				change_cnt++;
@@ -694,16 +694,14 @@ static int aml_card_init_jack(struct snd_soc_card *card,
 	enum of_gpio_flags flags = 0;
 	char prop[128];
 	char *pin_name;
-	char *gpio_name;
 	int mask;
 	int det;
 
-	sjack->gpio.gpio = -ENOENT;
+	sjack->gpio = -ENOENT;
 
 	if (is_hp) {
 		snprintf(prop, sizeof(prop), "%shp-det-gpio", prefix);
 		pin_name	= "Headphones";
-		gpio_name	= "Headphone detection";
 		mask		= SND_JACK_HEADPHONE;
 
 		det = of_get_named_gpio_flags(dev->of_node, prop, 0, &priv->hp_det_flags);
@@ -719,7 +717,6 @@ static int aml_card_init_jack(struct snd_soc_card *card,
 	} else {
 		snprintf(prop, sizeof(prop), "%smic-det-gpio", prefix);
 		pin_name	= "Mic Jack";
-		gpio_name	= "Mic detection";
 		mask		= SND_JACK_MICROPHONE;
 
 		det = of_get_named_gpio_flags(dev->of_node, prop, 0, &flags);
@@ -732,24 +729,24 @@ static int aml_card_init_jack(struct snd_soc_card *card,
 	}
 
 	if (gpio_is_valid(det)) {
+#if IS_ENABLED(CONFIG_AMLOGIC_GPIOLIB)
 		int state;
+#endif
 
 		sjack->pin.pin		= pin_name;
 		sjack->pin.mask		= mask;
 
-		sjack->gpio.name	= gpio_name;
-		sjack->gpio.report	= mask;
-		sjack->gpio.gpio	= det;
-		sjack->gpio.invert	= !!(flags & OF_GPIO_ACTIVE_LOW);
-		sjack->gpio.debounce_time = 150;
+		sjack->gpio = det;
 
 		gpio_direction_input(det);
+#if IS_ENABLED(CONFIG_AMLOGIC_GPIOLIB)
 		state = gpiod_set_pull(gpio_to_desc(det), GPIOD_PULL_DIS);
 		if (state)
 			pr_err("set gpiod pull failed, ret %d\n", state);
-		snd_soc_card_jack_new(card, pin_name, mask,
-				      &sjack->jack,
-				      &sjack->pin, 1);
+#endif
+		snd_soc_card_jack_new_pins(card, pin_name, mask,
+					     &sjack->jack,
+					     &sjack->pin, 1);
 	} else {
 		pr_info("detect gpio is invalid\n");
 	}
@@ -823,19 +820,20 @@ static void audio_extcon_register(struct aml_card_data *priv,
 
 static void aml_card_remove_jack(struct aml_jack *sjack)
 {
-	if (gpio_is_valid(sjack->gpio.gpio))
-		snd_soc_jack_free_gpios(&sjack->jack, 1, &sjack->gpio);
+	if (gpio_is_valid(sjack->gpio))
+		gpio_free(sjack->gpio);
 }
 
 static int aml_card_hw_params(struct snd_pcm_substream *substream,
 				      struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct aml_card_data *priv = snd_soc_card_get_drvdata(rtd->card);
+	int link_id = rtd->dai_link - priv->snd_card.dai_link;
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
-	struct aml_card_data *priv = snd_soc_card_get_drvdata(rtd->card);
-	struct snd_soc_dai_link *dai_link = aml_priv_to_link(priv, rtd->num);
-	struct aml_dai_props *dai_props = aml_priv_to_props(priv, rtd->num);
+	struct snd_soc_dai_link *dai_link = aml_priv_to_link(priv, link_id);
+	struct aml_dai_props *dai_props = aml_priv_to_props(priv, link_id);
 	unsigned int mclk = 0, mclk_fs = 0;
 	int i = 0, ret = 0;
 
@@ -847,7 +845,7 @@ static int aml_card_hw_params(struct snd_pcm_substream *substream,
 	if (mclk_fs) {
 		mclk = params_rate(params) * mclk_fs;
 
-		for (i = 0; i < rtd->num_codecs; i++) {
+		for (i = 0; i < rtd->dai_link->num_codecs; i++) {
 			codec_dai = asoc_rtd_to_codec(rtd, i);
 			ret = snd_soc_dai_set_sysclk(codec_dai, 0, mclk,
 				SND_SOC_CLOCK_IN);
@@ -877,9 +875,10 @@ static struct snd_soc_ops aml_card_ops = {
 static int aml_card_dai_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct aml_card_data *priv = snd_soc_card_get_drvdata(rtd->card);
+	int link_id = rtd->dai_link - priv->snd_card.dai_link;
 	struct snd_soc_dai *codec = asoc_rtd_to_codec(rtd, 0);
 	struct snd_soc_dai *cpu = asoc_rtd_to_cpu(rtd, 0);
-	struct aml_dai_props *dai_props = aml_priv_to_props(priv, rtd->num);
+	struct aml_dai_props *dai_props = aml_priv_to_props(priv, link_id);
 	static int hp_mic_detect_cnt;
 	bool idle_clk = false;
 	int ret, i;
@@ -887,7 +886,7 @@ static int aml_card_dai_init(struct snd_soc_pcm_runtime *rtd)
 	/* enable dai-link mclk when CONTINUOUS clk setted */
 	idle_clk = !!(rtd->dai_link->dai_fmt & SND_SOC_DAIFMT_CONT);
 
-	for (i = 0; i < rtd->num_codecs; i++) {
+	for (i = 0; i < rtd->dai_link->num_codecs; i++) {
 		codec = asoc_rtd_to_codec(rtd, i);
 
 		ret = aml_card_init_dai(codec, &dai_props->codec_dai, idle_clk);
@@ -1614,10 +1613,10 @@ err:
 	return ret;
 }
 
-static int aml_card_remove(struct platform_device *pdev)
+static void aml_card_remove(struct platform_device *pdev)
 {
-	struct snd_soc_card *card = platform_get_drvdata(pdev);
-	struct aml_card_data *priv = snd_soc_card_get_drvdata(card);
+	struct aml_card_data *priv = platform_get_drvdata(pdev);
+	struct snd_soc_card *card = &priv->snd_card;
 
 	if (priv->thread) {
 		kthread_stop(priv->thread);
@@ -1631,7 +1630,7 @@ static int aml_card_remove(struct platform_device *pdev)
 	if (priv->irq_exception64 > 0)
 		free_irq(priv->irq_exception64, NULL);
 
-	return aml_card_clean_reference(card);
+	aml_card_clean_reference(card);
 }
 
 static void aml_card_platform_shutdown(struct platform_device *pdev)

@@ -637,9 +637,11 @@ EXPORT_SYMBOL_GPL(fratv_LR_swap);
 
 void cec_arc_enable(int src, bool enable)
 {
+#if IS_ENABLED(CONFIG_AMLOGIC_MEDIA_ENABLE)
 	/* bits[1:0], 0x2: common; 0x1: single; 0x0: disabled */
 	aml_hiubus_update_bits(HHI_HDMIRX_ARC_CNTL, 0x1f << 0,
 			       src << 2 | (enable ? 0x1 : 0) << 0);
+#endif
 }
 
 void aml_audio_reset(int reg, int shift, bool use_vadtop)

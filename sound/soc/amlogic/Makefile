@@ -8,6 +8,7 @@ MODULE_NAME = amlogic-snd-soc
 PR_FMT = $(subst amlogic-,,$(MODULE_NAME))
 PR_FMT_DEFINE="-Dpr_fmt(fmt)= \"[$(PR_FMT)]: \" fmt"
 ccflags-y += $(PR_FMT_DEFINE)
+ccflags-y += -include $(srctree)/$(COMMON_DRIVERS_DIR)/include/linux/amlogic/aml_audio_kernel_compat.h
 ccflags-y += -I$(srctree)/$(COMMON_DRIVERS_DIR)/sound/soc/amlogic/common
 
 ccflags-y += -I$(srctree)/$(COMMON_DRIVERS_DIR)/drivers/efuse_unifykey/

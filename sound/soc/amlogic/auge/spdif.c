@@ -1851,7 +1851,7 @@ static const struct snd_soc_component_driver aml_spdif_component[] = {
 		.controls		= snd_spdif_controls,
 		.num_controls	= ARRAY_SIZE(snd_spdif_controls),
 
-		.pcm_construct  = aml_spdif_new,
+		.pcm_new  = aml_spdif_new,
 
 		.open         = aml_spdif_open,
 		.close        = aml_spdif_close,
@@ -1867,7 +1867,7 @@ static const struct snd_soc_component_driver aml_spdif_component[] = {
 		.controls		= snd_spdif_b_controls,
 		.num_controls	= ARRAY_SIZE(snd_spdif_b_controls),
 
-		.pcm_construct  = aml_spdif_new,
+		.pcm_new  = aml_spdif_new,
 
 		.open         = aml_spdif_open,
 		.close        = aml_spdif_close,

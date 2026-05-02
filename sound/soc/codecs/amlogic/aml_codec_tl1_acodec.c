@@ -659,7 +659,7 @@ static int tl1_acodec_dai_set_bias_level
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
-		if (component->dapm.bias_level == SND_SOC_BIAS_OFF) {
+		if (snd_soc_dapm_get_bias_level(component->dapm) == SND_SOC_BIAS_OFF) {
 			snd_soc_component_cache_sync(component);
 			snd_soc_component_write(component, ACODEC_0, tl1_acodec_init_list[0].def);
 		}
@@ -677,8 +677,6 @@ static int tl1_acodec_dai_set_bias_level
 	default:
 		break;
 	}
-	component->dapm.bias_level = level;
-
 	return 0;
 }
 
@@ -1123,7 +1121,7 @@ static int aml_tl1_acodec_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int aml_tl1_acodec_remove(struct platform_device *pdev)
+static void aml_tl1_acodec_remove(struct platform_device *pdev)
 {
 	struct tl1_acodec_priv *aml_acodec;
 
@@ -1133,8 +1131,6 @@ static int aml_tl1_acodec_remove(struct platform_device *pdev)
 		clk_disable_unprepare(aml_acodec->acodec_clk);
 
 	snd_soc_unregister_component(&pdev->dev);
-
-	return 0;
 }
 
 static void aml_tl1_acodec_shutdown(struct platform_device *pdev)

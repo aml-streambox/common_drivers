@@ -100,11 +100,9 @@ static int dummy_codec_platform_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int dummy_codec_platform_remove(struct platform_device *pdev)
+static void dummy_codec_platform_remove(struct platform_device *pdev)
 {
 	kfree(platform_get_drvdata(pdev));
-
-	return 0;
 }
 
 static struct platform_driver dummy_codec_platform_driver = {
