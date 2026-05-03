@@ -323,7 +323,7 @@ static int meson_hdmitx_decide_color_attr
 	} while (attr_list++);
 	if (attr_list->colorformat == HDMI_COLORSPACE_RESERVED6) {
 		DRM_INFO("%s no attr found, reset to 444,8bit.\n", __func__);
-		attr->colorformat = HDMI_COLORSPACE_YUV444;
+		attr->colorformat = HDMI_COLORSPACE_RGB;
 		attr->bitdepth = 8;
 	}
 
@@ -971,7 +971,7 @@ void meson_hdmitx_reset(struct drm_connector *connector)
 	hdmitx_state->base.content_protection = am_hdmi_info.hdcp_request_content_protection;
 
 	hdmitx_state->pref_hdr_policy = MESON_PREF_DV;
-	hdmitx_state->color_attr_para.colorformat = HDMI_COLORSPACE_YUV444;
+	hdmitx_state->color_attr_para.colorformat = HDMI_COLORSPACE_RGB;
 	hdmitx_state->color_attr_para.bitdepth = 8;
 
 	/*drm api need update state, so need delay attach when create state.*/
@@ -1388,6 +1388,9 @@ static int meson_hdmitx_decide_eotf_type
 	 *may not be available in am_meson_update_output_state() function
 	 */
 	hdmitx_state->pref_hdr_policy = tx_comm->hdr_priority;
+	/* HDMITX uses 0 as the default capability strategy, not a DV request. */
+	if (hdmitx_state->pref_hdr_policy == MESON_PREF_DV)
+		hdmitx_state->pref_hdr_policy = MESON_PREF_SDR;
 
 	/* TODO:hdr priority handled by hdmitx, and dont support dynamic set.
 	 * Currently checking is to confirm crtc_eotf_type == dv/dv_ll mode,
