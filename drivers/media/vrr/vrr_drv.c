@@ -21,6 +21,7 @@
 #include <linux/compat.h>
 #include <linux/clk.h>
 #include <linux/of_device.h>
+#include <linux/amlogic/aml_kernel_compat.h>
 #include <linux/amlogic/iomap.h>
 #include <linux/amlogic/media/vout/vinfo.h>
 #include <linux/amlogic/media/vout/vout_notify.h>

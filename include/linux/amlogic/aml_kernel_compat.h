@@ -8,7 +8,15 @@
 #define __AML_KERNEL_COMPAT_H__
 
 #include <linux/version.h>
+#include <linux/cma.h>
+#include <linux/delay.h>
+#include <linux/device.h>
+#include <linux/dma-map-ops.h>
+#include <linux/pinctrl/consumer.h>
+#include <linux/random.h>
+#include <linux/timer.h>
 #include <linux/vmalloc.h>
+#include <linux/amlogic/pm.h>
 
 #define __aml_class_create_1(name) class_create(name)
 #define __aml_class_create_2(owner, name) class_create(name)
@@ -17,5 +25,36 @@
 #define class_create(...) \
 	__aml_class_create_pick(__VA_ARGS__, __aml_class_create_2, \
 				  __aml_class_create_1)(__VA_ARGS__)
+
+#ifndef from_timer
+#define from_timer(var, callback_timer, timer_fieldname) \
+	timer_container_of(var, callback_timer, timer_fieldname)
+#endif
+
+#ifndef del_timer_sync
+#define del_timer_sync(timer) timer_delete_sync(timer)
+#endif
+
+#ifndef prandom_bytes
+#define prandom_bytes(buf, bytes) get_random_bytes(buf, bytes)
+#endif
+
+static inline struct page *aml_dma_alloc_from_contiguous(struct device *dev,
+							 size_t count,
+							 unsigned int align,
+							 bool no_warn)
+{
+	if (align > CONFIG_CMA_ALIGNMENT)
+		align = CONFIG_CMA_ALIGNMENT;
+
+	return cma_alloc(dev_get_cma_area(dev), count, align, no_warn);
+}
+
+static inline bool aml_dma_release_from_contiguous(struct device *dev,
+						       struct page *pages,
+						       int count)
+{
+	return cma_release(dev_get_cma_area(dev), pages, count);
+}
 
 #endif /* __AML_KERNEL_COMPAT_H__ */
