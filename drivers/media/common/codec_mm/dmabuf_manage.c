@@ -24,7 +24,6 @@
 #if IS_ENABLED(CONFIG_AMLOGIC_OPTEE)
 #include <linux/amlogic/tee_drv.h>
 #endif
-#include <uapi/linux/dvb/aml_dmx_ext.h>
 #ifdef CONFIG_AMLOGIC_DVB_COMPAT
 #include <media/aml_demux_ext.h>
 #endif
@@ -280,22 +279,13 @@ static struct sg_table *dmabuf_manage_map_dma_buf(struct dma_buf_attachment *att
 {
 	struct kdmabuf_attachment *attach = attachment->priv;
 	struct dmabuf_manage_block *block = attachment->dmabuf->priv;
-#if CONFIG_AMLOGIC_KERNEL_VERSION <= 14515
-	struct mutex *lock = &attachment->dmabuf->lock;
-#endif
 	struct sg_table *sgt;
 
 	pr_enter();
-#if CONFIG_AMLOGIC_KERNEL_VERSION <= 14515
-	mutex_lock(lock);
-#endif
 	sgt = &attach->sgt;
-	if (attach->dma_dir == dma_dir) {
-#if CONFIG_AMLOGIC_KERNEL_VERSION <= 14515
-		mutex_unlock(lock);
-#endif
+	if (attach->dma_dir == dma_dir)
 		return sgt;
-	}
+
 	sgt->sgl->dma_address = block->paddr;
 #ifdef CONFIG_NEED_SG_DMA_LENGTH
 	sgt->sgl->dma_length = PAGE_ALIGN(block->size);
@@ -305,9 +295,6 @@ static struct sg_table *dmabuf_manage_map_dma_buf(struct dma_buf_attachment *att
 	pr_dbg("nents %d, %x, %d, %d\n", sgt->nents, block->paddr,
 			sg_dma_len(sgt->sgl), block->size);
 	attach->dma_dir = dma_dir;
-#if CONFIG_AMLOGIC_KERNEL_VERSION <= 14515
-	mutex_unlock(lock);
-#endif
 	return sgt;
 }
 
@@ -326,7 +313,9 @@ static void dmabuf_manage_buf_release(struct dma_buf *dbuf)
 	struct secure_vdec_channel *channel = NULL;
 	struct list_head *pos = NULL, *tmp = NULL;
 	int found = 0;
+#ifdef CONFIG_AMLOGIC_DVB_COMPAT
 	struct decoder_mem_info rp_info;
+#endif
 
 	pr_enter();
 	block = (struct dmabuf_manage_block *)dbuf->priv;
@@ -340,6 +329,7 @@ static void dmabuf_manage_buf_release(struct dma_buf *dbuf)
 			}
 		}
 		if (found) {
+#ifdef CONFIG_AMLOGIC_DVB_COMPAT
 			if (es->buf_rp == 0)
 				es->buf_rp = es->data_end;
 			if (es->buf_rp >= es->buf_start && es->buf_rp <= es->buf_end &&
@@ -347,6 +337,7 @@ static void dmabuf_manage_buf_release(struct dma_buf *dbuf)
 				rp_info.rp_phy = es->buf_rp;
 				node->decode_info_func(node->demux, &rp_info);
 			}
+#endif
 		}
 	} else if (block && block->type == DMA_BUF_TYPE_DMABUF) {
 		if (block->flags & DMABUF_ALLOC_FROM_CMA)

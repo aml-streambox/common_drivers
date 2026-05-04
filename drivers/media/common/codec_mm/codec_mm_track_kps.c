@@ -80,7 +80,7 @@ static int kp_do_dup2_pre(struct kprobe *p, struct pt_regs *regs)
 
 	fdt = files_fdtable(files);
 	tofree = fdt->fd[fd];
-	if (!tofree && fd_is_open(fd, fdt))
+	if (!tofree && fd < fdt->max_fds && test_bit(fd, fdt->open_fds))
 		goto out;
 
 	kctx->func(kctx->priv, p->symbol_name, 0, DBUF_TRACE_FUNC_1, file, &fd, NULL);
@@ -208,4 +208,3 @@ void codec_mm_unreg_kprobes(void *kps_h)
 
 	codec_mm_unregister_kprobes(KPS_GET(), KPS_SIZE());
 }
-
