@@ -2801,7 +2801,7 @@ int vdin_vframe_put_and_recycle(struct vdin_dev_s *devp, struct vf_entry *vfe,
 
 		/*put one frame to receiver*/
 		if (devp->work_mode == VDIN_WORK_MD_V4L) {
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) && defined(CONFIG_AMLOGIC_MEDIA_VIDEOCAPTURE)
 			ret_v4l = vdin_v4l2_if_isr(devp,
 					&devp->vfp->last_last_vfe->vf);
 			/*v4l put fail, need recycle vframe to write list*/
@@ -5419,7 +5419,7 @@ static int vdin_mmap(struct file *file, struct vm_area_struct *vma)
 	vma->vm_pgoff = off >> PAGE_SHIFT;
 
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-	vma->vm_flags |= VM_IO | VM_DONTEXPAND | VM_DONTDUMP;
+	vm_flags_set(vma, VM_IO | VM_DONTEXPAND | VM_DONTDUMP);
 
 	size = vma->vm_end - vma->vm_start;
 	pfn  = off >> PAGE_SHIFT;
@@ -5656,7 +5656,9 @@ int vdin_create_dev_class_files(struct device *dev)
 	ret = vdin_create_debug_files(dev);
 
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#ifdef CONFIG_AMLOGIC_MEDIA_VIDEOCAPTURE
 	vdin_v4l2_create_device_files(dev);
+#endif
 #endif
 	return ret;
 }
@@ -5668,7 +5670,9 @@ void vdin_rm_dev_class_files(struct device *dev)
 	vdin_remove_debug_files(dev);
 
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#ifdef CONFIG_AMLOGIC_MEDIA_VIDEOCAPTURE
 	vdin_v4l2_remove_device_files(dev);
+#endif
 #endif
 }
 
@@ -6649,7 +6653,7 @@ static int vdin_drv_probe(struct platform_device *pdev)
 	/* set max pixel clk of vdin */
 	vdin_set_config(devp);
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) && defined(CONFIG_AMLOGIC_MEDIA_VIDEOCAPTURE)
 	/*probe v4l interface*/
 	if (devp->dts_config.v4l_en)
 		vdin_v4l2_probe(pdev, devp);
@@ -7023,7 +7027,7 @@ int __init vdin_drv_init(void)
 		goto fail_pdrv_register;
 	}
 
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) && defined(CONFIG_AMLOGIC_MEDIA_VIDEOCAPTURE)
 	/*register vdin for v4l2 interface*/
 	if (vdin_reg_v4l2(&vdin_4v4l2_ops))
 		pr_err("[vdin] %s: register vdin v4l2 error.\n", __func__);
@@ -7041,7 +7045,7 @@ fail_alloc_cdev_region:
 
 void __exit vdin_drv_exit(void)
 {
-#ifndef CONFIG_AMLOGIC_ZAPPER_CUT
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) && defined(CONFIG_AMLOGIC_MEDIA_VIDEOCAPTURE)
 	vdin_unregister_v4l2();
 #endif
 #ifdef DEBUG_SUPPORT
