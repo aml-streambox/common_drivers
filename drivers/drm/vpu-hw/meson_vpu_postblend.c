@@ -62,7 +62,8 @@ static struct postblend_reg_s postblend_reg = {
 	VPP_OSD1_IN_SIZE,
 };
 
-#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU) || \
+	defined(CONFIG_AMLOGIC_DRM_MODULE)
 static struct postblend1_reg_s postblend1_reg[3] = {
 	{},
 	{
@@ -104,7 +105,8 @@ static struct postblend_reg_s s5_postblend_reg = {
 };
 #endif
 
-#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU) || \
+	defined(CONFIG_AMLOGIC_DRM_MODULE)
 static void fix_vpu_clk2_default_regs(struct meson_vpu_block *vblk,
 				struct rdma_reg_ops *reg_ops, int crtc_index, u32 *crtcmask_osd);
 #endif
@@ -222,7 +224,8 @@ static int drm_postblend_notify_amvideo(void)
 	return 0;
 }
 
-#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU) || \
+	defined(CONFIG_AMLOGIC_DRM_MODULE)
 static void vpp1_osd1_blend_scope_set(struct meson_vpu_block *vblk,
 				      struct rdma_reg_ops *reg_ops,
 				      struct postblend1_reg_s *reg,
@@ -454,7 +457,8 @@ static void txhd2_postblend_set_state(struct meson_vpu_block *vblk,
 
 #endif
 
-#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU) || \
+	defined(CONFIG_AMLOGIC_DRM_MODULE)
 static void t7_postblend_set_state(struct meson_vpu_block *vblk,
 				struct meson_vpu_block_state *state,
 				struct meson_vpu_block_state *old_state)
@@ -928,7 +932,8 @@ static void postblend_dump_register(struct drm_printer *p,
 		reg_addr, value);
 }
 
-#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU) || \
+	defined(CONFIG_AMLOGIC_DRM_MODULE)
 static void t7_postblend_dump_register(struct drm_printer *p,
 							struct meson_vpu_block *vblk)
 {
