@@ -10,6 +10,7 @@
 #include <uapi/linux/dma-buf.h>
 #include <uapi/linux/magic.h>
 #include <drm/drm_gem_dma_helper.h>
+#include <drm/drm_gem_atomic_helper.h>
 #include <drm/drm_fb_dma_helper.h>
 #ifdef CONFIG_AMLOGIC_MEDIA_FB
 #include <linux/amlogic/media/osd/osd_logo.h>
@@ -1276,7 +1277,7 @@ static const struct drm_plane_funcs am_video_plane_funs = {
 static int meson_plane_prepare_fb(struct drm_plane *plane,
 				  struct drm_plane_state *new_state)
 {
-	return 0;
+	return drm_gem_plane_helper_prepare_fb(plane, new_state);
 }
 
 static void meson_plane_cleanup_fb(struct drm_plane *plane,

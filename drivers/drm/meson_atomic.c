@@ -492,10 +492,24 @@ int meson_atomic_commit(struct drm_device *dev,
 		meson_commit_reenter_inc(priv, crtc_index, ASYNC_MODE);
 		priv->pan_async_commit_ran = true;
 		ret = drm_atomic_helper_prepare_planes(dev, state);
-		if (ret)
+		if (ret) {
+			meson_commit_reenter_dec(priv, crtc_index, ASYNC_MODE);
 			return ret;
+		}
+
+		ret = drm_atomic_helper_wait_for_fences(dev, state, true);
+		if (ret) {
+			drm_atomic_helper_cleanup_planes(dev, state);
+			meson_commit_reenter_dec(priv, crtc_index, ASYNC_MODE);
+			return ret;
+		}
 
 		ret = drm_atomic_helper_swap_state(state, true);
+		if (ret) {
+			drm_atomic_helper_cleanup_planes(dev, state);
+			meson_commit_reenter_dec(priv, crtc_index, ASYNC_MODE);
+			return ret;
+		}
 		meson_atomic_helper_async_commit(dev, state);
 		drm_atomic_helper_cleanup_planes(dev, state);
 		meson_commit_reenter_dec(priv, crtc_index, ASYNC_MODE);
