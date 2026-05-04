@@ -104,7 +104,7 @@ u32 tee_register_mem(u32 type, phys_addr_t pa, size_t size)
 }
 #endif
 
-#if IS_MODULE(CONFIG_AMLOGIC_MEDIA_MODULE) && \
+#if IS_BUILTIN(CONFIG_AMLOGIC_MEDIA_MODULE) && \
 	IS_ENABLED(CONFIG_KALLSYMS_ALL) && \
 	!IS_ENABLED(CONFIG_DEBUG_SPINLOCK)
 /* aml_media is ko can't use cma_mmu_op() func */
@@ -3928,7 +3928,7 @@ int codec_mm_cs_show(struct seq_file *m, struct codec_state_node *cs)
 
 CODEC_STATE_RO(codec_mm);
 
-#if IS_MODULE(CONFIG_AMLOGIC_MEDIA_MODULE) && \
+#if IS_BUILTIN(CONFIG_AMLOGIC_MEDIA_MODULE) && \
 	IS_ENABLED(CONFIG_KALLSYMS_ALL) && \
 	!IS_ENABLED(CONFIG_DEBUG_SPINLOCK)
 #ifdef CONFIG_ARM64
@@ -4120,7 +4120,7 @@ static int codec_mm_probe(struct platform_device *pdev)
 
 	pr_info("%s ok\n", __func__);
 
-#if IS_MODULE(CONFIG_AMLOGIC_MEDIA_MODULE) && \
+#if IS_BUILTIN(CONFIG_AMLOGIC_MEDIA_MODULE) && \
 	IS_ENABLED(CONFIG_KALLSYMS_ALL) && \
 	!IS_ENABLED(CONFIG_DEBUG_SPINLOCK)
 	codec_dev = &pdev->dev;
@@ -4134,7 +4134,7 @@ static int codec_mm_probe(struct platform_device *pdev)
 				  "trigger", codec_mm_trigger,
 				  CONFIG_FOR_RW | CONFIG_FOR_T);
 	codec_state_register(&mgt->cs, &codec_mm_cs_ops);
-#if IS_MODULE(CONFIG_AMLOGIC_MEDIA_MODULE) && \
+#if IS_BUILTIN(CONFIG_AMLOGIC_MEDIA_MODULE) && \
 	IS_ENABLED(CONFIG_KALLSYMS_ALL) && \
 	!IS_ENABLED(CONFIG_DEBUG_SPINLOCK)
 	kthread_run(get_mte_sync_tags_hook_kprobe, NULL, "AML_CODEC_MM");

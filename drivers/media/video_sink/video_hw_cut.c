@@ -57,6 +57,11 @@
 #endif
 #include "videolog.h"
 
+void rx_mute_vpp(u8 port_type)
+{
+}
+EXPORT_SYMBOL(rx_mute_vpp);
+
 #if IS_ENABLED(CONFIG_AMLOGIC_DEBUG_ATRACE)
 #define KERNEL_ATRACE_TAG KERNEL_ATRACE_TAG_VIDEO
 #include <trace/events/meson_atrace.h>
