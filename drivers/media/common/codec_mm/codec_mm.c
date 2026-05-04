@@ -143,7 +143,7 @@ static void aml_set_pte_at(struct mm_struct *mm, unsigned long addr,
 			aml_mte_sync_tags(old_pte, pte);
 	}
 
-	__check_racy_pte_update(mm, ptep, pte);
+	__check_safe_pte_update(mm, ptep, pte);
 
 	set_pte(ptep, pte);
 }
