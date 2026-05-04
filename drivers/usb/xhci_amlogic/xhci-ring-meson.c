@@ -3233,7 +3233,7 @@ irqreturn_t aml_xhci_irq(struct usb_hcd *hcd)
 	if (!(status & STS_EINT)) {
 #if IS_ENABLED(CONFIG_AMLOGIC_COMMON_USB)
 		ret = IRQ_HANDLED;
-		aml_xhci_info(xhci, "usb interrupt is coming, but the status register=0x%08x\n",
+		aml_xhci_dbg(xhci, "usb interrupt is coming, but the status register=0x%08x\n",
 						status);
 #else
 		goto out;
