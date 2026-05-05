@@ -53,12 +53,15 @@ static void vout_meas_ctrl_init_dft(struct platform_device *pdev, struct vout_mu
 	if (!vdata)
 		return;
 
-	vdata->msr_clk = clk_get(&pdev->dev, "vdin_meas_clk");
-	if (IS_ERR_OR_NULL(vdata->msr_clk)) {
-		VOUTERR("%s: get vdin_meas_clk err!\n", __func__);
+	vdata->msr_clk = devm_clk_get_optional(&pdev->dev, "vdin_meas_clk");
+	if (IS_ERR(vdata->msr_clk)) {
+		VOUTERR("%s: get vdin_meas_clk err: %ld\n",
+			__func__, PTR_ERR(vdata->msr_clk));
 		vdata->msr_clk = NULL;
 		return;
 	}
+	if (!vdata->msr_clk)
+		return;
 
 	clk_set_rate(vdata->msr_clk, vdin_meas_clk_val);
 	clk_prepare_enable(vdata->msr_clk);
@@ -77,12 +80,15 @@ static void vout_meas_ctrl_init_s5(struct platform_device *pdev, struct vout_mux
 	if (!vdata)
 		return;
 
-	vdata->msr_clk = clk_get(&pdev->dev, "vdin_meas_clk");
-	if (IS_ERR_OR_NULL(vdata->msr_clk)) {
-		VOUTERR("%s: get vdin_meas_clk err!\n", __func__);
+	vdata->msr_clk = devm_clk_get_optional(&pdev->dev, "vdin_meas_clk");
+	if (IS_ERR(vdata->msr_clk)) {
+		VOUTERR("%s: get vdin_meas_clk err: %ld\n",
+			__func__, PTR_ERR(vdata->msr_clk));
 		vdata->msr_clk = NULL;
 		return;
 	}
+	if (!vdata->msr_clk)
+		return;
 
 	clk_prepare_enable(vdata->msr_clk);
 	clk_msr_val = clk_get_rate(vdata->msr_clk);

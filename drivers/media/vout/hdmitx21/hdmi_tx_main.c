@@ -3723,9 +3723,6 @@ static int hdmitx21_pre_enable_mode(struct hdmitx_common *tx_comm, struct hdmi_f
 #endif
 	enum frl_rate_enum source_test_frl_rate = FRL_NONE;
 
-	/* KMS SDR modes must not inherit HDR/DV packets left by firmware. */
-	hdmitx21_clear_packets(&hdev->tx_hw.base);
-
 	/* disable hdcp before set mode if hdcp enabled.
 	 * normally hdcp is disabled before setting mode
 	 * when disable phy, but for special case of bootup,

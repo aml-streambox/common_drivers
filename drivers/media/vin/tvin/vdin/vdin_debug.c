@@ -2842,14 +2842,13 @@ int vdin_afbce_compression_ratio_monitor(struct vdin_dev_s *devp, struct vf_entr
 
 static int vdin_task(void *data)
 {
-	struct sched_param param = {.sched_priority = MAX_RT_PRIO - 1};
 	struct vdin_dev_s *devp = (struct vdin_dev_s *)(data);
 
 	if (!devp) {
 		pr_info("devp == NULL\n");
 		return -1;
 	}
-	sched_setscheduler(current, SCHED_FIFO, &param);
+	sched_set_fifo(current);
 	allow_signal(SIGTERM);
 
 	while (1) {

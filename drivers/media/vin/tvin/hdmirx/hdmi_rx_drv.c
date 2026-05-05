@@ -3170,7 +3170,7 @@ void rx_emp_resource_allocate(struct device *dev)
 		rx_info.emp_buff_a.dump_mode = DUMP_MODE_EMP;
 		/* allocate buffer for hw access*/
 		rx_info.emp_buff_a.pg_addr =
-			dma_alloc_from_contiguous(dev,
+			aml_dma_alloc_from_contiguous(dev,
 						  EMP_BUFFER_SIZE >> PAGE_SHIFT, 0, 0);
 		if (rx_info.emp_buff_a.pg_addr) {
 			/* hw access */
@@ -3202,7 +3202,7 @@ void rx_emp1_resource_allocate(struct device *dev)
 	rx_info.emp_buff_b.dump_mode = DUMP_MODE_EMP;
 	/* allocate buffer for hw access*/
 	rx_info.emp_buff_b.pg_addr =
-		dma_alloc_from_contiguous(dev,
+	aml_dma_alloc_from_contiguous(dev,
 					  EMP_BUFFER_SIZE >> PAGE_SHIFT, 0, 0);
 	if (rx_info.emp_buff_b.pg_addr) {
 		/* hw access */
@@ -3257,7 +3257,7 @@ void rx_tmds_resource_allocate(struct device *dev, u8 port)
 	if (rx_info.chip_id >= CHIP_ID_TL1) {
 		if (rx[port].emp_info->dump_mode == DUMP_MODE_EMP) {
 			if (rx[port].emp_info->pg_addr) {
-				dma_release_from_contiguous(dev,
+				aml_dma_release_from_contiguous(dev,
 							    rx[port].emp_info->pg_addr,
 							    EMP_BUFFER_SIZE >> PAGE_SHIFT);
 				/*free_reserved_area();*/
@@ -3266,7 +3266,7 @@ void rx_tmds_resource_allocate(struct device *dev, u8 port)
 			}
 		} else {
 			if (rx[port].emp_info->pg_addr)
-				dma_release_from_contiguous(dev,
+				aml_dma_release_from_contiguous(dev,
 							    rx[port].emp_info->pg_addr,
 							    TMDS_BUFFER_SIZE >> PAGE_SHIFT);
 			rx[port].emp_info->pg_addr = 0;
@@ -3275,7 +3275,7 @@ void rx_tmds_resource_allocate(struct device *dev, u8 port)
 
 		/* allocate tmds data buffer */
 		rx[port].emp_info->pg_addr =
-			dma_alloc_from_contiguous(dev, TMDS_BUFFER_SIZE >> PAGE_SHIFT, 0, 0);
+			aml_dma_alloc_from_contiguous(dev, TMDS_BUFFER_SIZE >> PAGE_SHIFT, 0, 0);
 
 		if (rx[port].emp_info->pg_addr)
 			rx[port].emp_info->p_addr_a =
@@ -3507,9 +3507,7 @@ static int hdmirx_probe(struct platform_device *pdev)
 	int clk_rate;
 	const struct of_device_id *of_id;
 	struct input_dev *input_dev;
-	struct sched_param param;
 
-	param.sched_priority = MAX_RT_PRIO - 1;
 	log_init(DEF_LOG_BUF_SIZE);
 	hdmirx_dev = &pdev->dev;
 	/*get compatible matched device, to get chip related data*/
@@ -3931,13 +3929,13 @@ static int hdmirx_probe(struct platform_device *pdev)
 	frl_worker_task = kthread_run(kthread_worker_fn,
 					   &frl_worker, "frl kthread worker");
 	kthread_init_work(&frl_work, rx_frl_train_handler);
-	sched_setscheduler(frl_worker_task, SCHED_FIFO, &param);
+	sched_set_fifo(frl_worker_task);
 
 	kthread_init_worker(&frl1_worker);
 	frl1_worker_task = kthread_run(kthread_worker_fn,
 					   &frl1_worker, "frl1 kthread worker");
 	kthread_init_work(&frl1_work, rx_frl_train_handler_1);
-	sched_setscheduler(frl1_worker_task, SCHED_FIFO, &param);
+	sched_set_fifo(frl1_worker_task);
 
 	init_waitqueue_head(&tx_wait_queue);
 

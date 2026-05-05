@@ -21,16 +21,16 @@ ifeq ($(CONFIG_AMLOGIC_DRM_EMULATE_FBDEV),y)
         $(MESON_DRM_MODULE_NAME)-y += meson_fbdev.o
 endif
 
-ifneq ($(CONFIG_AMLOGIC_DRM_VPU),)
-        $(MESON_DRM_MODULE_NAME)-y += meson_vpu.o
-endif
+$(MESON_DRM_MODULE_NAME)-y += meson_vpu.o
 
 ifeq ($(CONFIG_AMLOGIC_DRM_CUT_HDMI),)
         $(MESON_DRM_MODULE_NAME)-y += meson_hdmi.o
 endif
 
+ifeq ($(CONFIG_AMLOGIC_CVBS_OUTPUT),y)
 ifeq ($(CONFIG_AMLOGIC_DRM_CUT_CVBS),)
         $(MESON_DRM_MODULE_NAME)-y += meson_cvbs.o
+endif
 endif
 
 $(MESON_DRM_MODULE_NAME)-y += meson_drv.o meson_plane.o \

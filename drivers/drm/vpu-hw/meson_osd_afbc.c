@@ -125,7 +125,8 @@ static struct afbc_status_reg_s afbc_status_regs = {
 	VPU_MAFBC_SURFACE_CFG,
 };
 
-#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU) || \
+	defined(CONFIG_AMLOGIC_DRM_MODULE)
 static struct afbc_osd_reg_s afbc_osd_t7_regs[MESON_MAX_OSDS] = {
 	{
 		VPU_MAFBC_HEADER_BUF_ADDR_LOW_S0,
@@ -468,7 +469,8 @@ static void osd_afbc_enable(struct meson_vpu_block *vblk,
 	}
 }
 
-#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU) || \
+	defined(CONFIG_AMLOGIC_DRM_MODULE)
 static void t7_osd_afbc_enable(struct meson_vpu_block *vblk,
 			       struct rdma_reg_ops *reg_ops,
 			       struct afbc_status_reg_s *reg, u32 osd_index, bool flag)
@@ -673,7 +675,8 @@ static void g12a_osd_afbc_set_state(struct meson_vpu_block *vblk,
 	MESON_DRM_BLOCK("%s set_state called.\n", afbc->base.name);
 }
 
-#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU) || \
+	defined(CONFIG_AMLOGIC_DRM_MODULE)
 static void osd_afbc_ctrl_init(struct meson_vpu_block *vblk,
 	struct rdma_reg_ops *reg_ops, struct meson_vpu_pipeline_state *mvps)
 {
@@ -1570,7 +1573,8 @@ static void osd_afbc_dump_register(struct drm_printer *p,
 		   reg_addr, value);
 }
 
-#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU) || \
+	defined(CONFIG_AMLOGIC_DRM_MODULE)
 static void t7_osd_afbc_dump_register(struct drm_printer *p,
 						struct meson_vpu_block *vblk)
 {
@@ -1722,7 +1726,8 @@ static void osd_afbc_hw_disable(struct meson_vpu_block *vblk,
 	MESON_DRM_BLOCK("%s disable called.\n", afbc->base.name);
 }
 
-#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU)
+#if !defined(CONFIG_AMLOGIC_ZAPPER_CUT) || defined(CONFIG_AMLOGIC_DRM_VPU) || \
+	defined(CONFIG_AMLOGIC_DRM_MODULE)
 static void t7_osd_afbc_hw_disable(struct meson_vpu_block *vblk,
 				   struct meson_vpu_block_state *state)
 {

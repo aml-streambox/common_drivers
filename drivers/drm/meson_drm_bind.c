@@ -33,7 +33,7 @@ int meson_connector_dev_bind(struct drm_device *drm,
 		return meson_hdmitx_dev_bind(drm, type, intf);
 #endif
 
-#ifndef CONFIG_AMLOGIC_DRM_CUT_CVBS
+#if defined(CONFIG_AMLOGIC_CVBS_OUTPUT) && !defined(CONFIG_AMLOGIC_DRM_CUT_CVBS)
 	case DRM_MODE_CONNECTOR_TV:
 		return meson_cvbs_dev_bind(drm, type, intf);
 #endif
@@ -81,7 +81,7 @@ int meson_connector_dev_unbind(struct drm_device *drm,
 		return meson_hdmitx_dev_unbind(drm, type, connector_id);
 #endif
 
-#ifndef CONFIG_AMLOGIC_DRM_CUT_CVBS
+#if defined(CONFIG_AMLOGIC_CVBS_OUTPUT) && !defined(CONFIG_AMLOGIC_DRM_CUT_CVBS)
 	case DRM_MODE_CONNECTOR_TV:
 		return meson_cvbs_dev_unbind(drm, type, connector_id);
 #endif
@@ -105,4 +105,3 @@ int meson_connector_dev_unbind(struct drm_device *drm,
 	};
 }
 EXPORT_SYMBOL(meson_connector_dev_unbind);
-

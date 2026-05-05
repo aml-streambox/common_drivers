@@ -6,6 +6,8 @@
 #ifndef __VPU_H__
 #define __VPU_H__
 
+#include <linux/types.h>
+
 /* ************************************************ */
 /* VPU module define */
 /* ************************************************ */
@@ -163,6 +165,7 @@ struct vpu_dev_s {
 struct vpu_dev_s *vpu_dev_get(unsigned int vmod, char *owner_name);
 struct vpu_dev_s *vpu_dev_register(unsigned int vmod, char *owner_name);
 int vpu_dev_unregister(struct vpu_dev_s *vpu_dev);
+bool vpu_probe_ready(void);
 
 unsigned int vpu_clk_get(void);
 unsigned int vpu_dev_clk_get(struct vpu_dev_s *vpu_dev);

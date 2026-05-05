@@ -6,12 +6,13 @@
 #ifndef _MESON_DRM_MAIN_H__
 #define _MESON_DRM_MAIN_H__
 
-#ifdef CONFIG_AMLOGIC_DRM_VPU
+#if defined(CONFIG_AMLOGIC_DRM_VPU) || defined(CONFIG_AMLOGIC_DRM_MODULE)
 int am_meson_vpu_init(void);
 void am_meson_vpu_exit(void);
 #else
 static inline int am_meson_vpu_init(void)
 {
+	return 0;
 }
 
 static inline void am_meson_vpu_exit(void) {}

@@ -4373,7 +4373,9 @@ void hdmi_in_delay_maxmin_new(struct vframe_s *vf)
 #ifdef CONFIG_AMLOGIC_MEDIA_VDIN
 	vdin_keep_count += get_vdin_add_delay_num();
 #endif
+#ifdef CONFIG_AMLOGIC_DI_PROCESS
 	di_backend_en = get_di_proc_enable();
+#endif
 	if (di_backend_en) {
 		vdin_keep_count += 1;
 		di_keep_count = 0;
@@ -4485,7 +4487,11 @@ static void hdmi_in_delay_maxmin_new1(struct tvin_to_vpp_info_s *tvin_info)
 		tvin_info->cfmt == TVIN_YUV422) {
 		do_di = true;
 		/* TODO: if need add post link check */
-		if ((tvin_info->width > 1920 && tvin_info->width <= 3840) || dim_get_pre_link())
+		if ((tvin_info->width > 1920 && tvin_info->width <= 3840)
+#ifdef CONFIG_AMLOGIC_MEDIA_DEINTERLACE
+			|| dim_get_pre_link()
+#endif
+			)
 			di_has_vdin_vf = true;
 		if (tvin_info->scan_mode == TVIN_SCAN_MODE_INTERLACED)
 			di_keep_count = DI_KEEP_COUNT_I;
@@ -4498,7 +4504,9 @@ static void hdmi_in_delay_maxmin_new1(struct tvin_to_vpp_info_s *tvin_info)
 #ifdef CONFIG_AMLOGIC_MEDIA_VDIN
 	vdin_keep_count += get_vdin_add_delay_num();
 #endif
+#ifdef CONFIG_AMLOGIC_DI_PROCESS
 	di_backend_en = get_di_proc_enable();
+#endif
 	if (di_backend_en) {
 		vdin_keep_count += 1;
 		di_keep_count = 0;

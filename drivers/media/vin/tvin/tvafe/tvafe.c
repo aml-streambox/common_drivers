@@ -274,7 +274,7 @@ static int tvafe_cma_alloc(struct tvafe_dev_s *devp)
 		}
 	} else if (devp->cma_config_flag == 0) {
 		devp->venc_pages =
-			dma_alloc_from_contiguous(&devp->this_pdev->dev,
+			aml_dma_alloc_from_contiguous(&devp->this_pdev->dev,
 			mem_size >> PAGE_SHIFT, 0, 0);
 		if (devp->venc_pages) {
 			devp->mem.start = page_to_phys(devp->venc_pages);
@@ -307,7 +307,7 @@ static void tvafe_cma_release(struct tvafe_dev_s *devp)
 		   (devp->cma_mem_alloc == 1) &&
 		   (devp->cma_config_flag == 0)) {
 		devp->cma_mem_alloc = 0;
-		dma_release_from_contiguous(&devp->this_pdev->dev,
+	aml_dma_release_from_contiguous(&devp->this_pdev->dev,
 			devp->venc_pages,
 			devp->cma_mem_size >> PAGE_SHIFT);
 		tvafe_pr_info("cma release ok!\n");
@@ -2317,4 +2317,3 @@ RESERVEDMEM_OF_DECLARE(tvafe, "amlogic, tvafe_memory",
 //MODULE_DESCRIPTION("AMLOGIC TVAFE driver");
 //MODULE_LICENSE("GPL");
 //MODULE_AUTHOR("Xu Lin <lin.xu@amlogic.com>");
-

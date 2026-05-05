@@ -167,12 +167,18 @@ static void hdr_proc(struct vframe_s *vf,
 		__func__, module_sel, limit_full);
 
 	/* RGB / YUV vdin input handling  prepare extra op code or info */
-	if (vf && vf->type & VIDTYPE_RGB_444 && !is_amdv_on() &&
-		get_amdv_src_format(VD1_PATH) != HDRTYPE_DOVI)
+	if (vf && vf->type & VIDTYPE_RGB_444 && !is_amdv_on()
+#ifdef CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_DOLBYVISION
+		&& get_amdv_src_format(VD1_PATH) != HDRTYPE_DOVI
+#endif
+		)
 		hdr_process_select |= RGB_VDIN;
 
-	if (limit_full && !is_amdv_on() &&
-		get_amdv_src_format(VD1_PATH) != HDRTYPE_DOVI)
+	if (limit_full && !is_amdv_on()
+#ifdef CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_DOLBYVISION
+		&& get_amdv_src_format(VD1_PATH) != HDRTYPE_DOVI
+#endif
+		)
 		hdr_process_select |= FULL_VDIN;
 	/* RGB / YUV input handling */
 

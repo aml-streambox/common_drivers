@@ -28,6 +28,9 @@
 
 /* Amlogic Headers */
 #include <linux/amlogic/media/vout/vout_notify.h>
+#ifdef CONFIG_AMLOGIC_VPU
+#include <linux/amlogic/media/vpu/vpu.h>
+#endif
 #include <uapi/amlogic/vout_ioc.h>
 
 /* Local Headers */
@@ -1151,7 +1154,7 @@ static void aml_vout_get_dt_info(struct platform_device *pdev)
 				"vout_vsync", (void *)&vsync_irq)) {
 			VOUTERR("%s: can't request vout_vsync\n", __func__);
 		}
-	} else {
+	} else if (vs_meas_en) {
 		VOUTERR("%s: can't get vsync irq\n", __func__);
 	}
 }
@@ -1164,6 +1167,11 @@ static void aml_vout_get_dt_info(struct platform_device *pdev)
 static int aml_vout_probe(struct platform_device *pdev)
 {
 	int ret = -1;
+
+#ifdef CONFIG_AMLOGIC_VPU
+	if (!vpu_probe_ready())
+		return -EPROBE_DEFER;
+#endif
 
 	vout_dev = &pdev->dev;
 

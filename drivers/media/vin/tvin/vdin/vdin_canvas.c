@@ -750,7 +750,7 @@ unsigned int vdin_cma_alloc(struct vdin_dev_s *devp)
 				}
 			} else {
 				devp->vf_venc_pages[i] =
-					dma_alloc_from_contiguous(&devp->this_pdev->dev,
+					aml_dma_alloc_from_contiguous(&devp->this_pdev->dev,
 								  frame_size >> PAGE_SHIFT, 0, 0);
 				if (!devp->vf_venc_pages[i]) {
 					pr_err("vdin%d cma mem undefined2.\n", devp->index);
@@ -781,7 +781,7 @@ unsigned int vdin_cma_alloc(struct vdin_dev_s *devp)
 			}
 		} else {
 			devp->venc_pages =
-				dma_alloc_from_contiguous(&devp->this_pdev->dev,
+				aml_dma_alloc_from_contiguous(&devp->this_pdev->dev,
 							  mem_size >> PAGE_SHIFT, 0, 0);
 			if (!devp->venc_pages) {
 				devp->cma_mem_alloc = 0;
@@ -945,7 +945,7 @@ void vdin_cma_release(struct vdin_dev_s *devp)
 			pr_info("vdin%d codec cma release ok!\n", devp->index);
 		} else {
 			for (i = 0; i < devp->vf_mem_max_cnt; i++)
-				dma_release_from_contiguous(&devp->this_pdev->dev,
+				aml_dma_release_from_contiguous(&devp->this_pdev->dev,
 							    devp->vf_venc_pages[i],
 							    devp->frame_size >> PAGE_SHIFT);
 
@@ -963,7 +963,7 @@ void vdin_cma_release(struct vdin_dev_s *devp)
 			pr_info("vdin%d codec cma release ok!\n", devp->index);
 		} else {
 			if (devp->venc_pages && devp->mem_size)
-				dma_release_from_contiguous(&devp->this_pdev->dev,
+				aml_dma_release_from_contiguous(&devp->this_pdev->dev,
 							    devp->venc_pages,
 							    devp->mem_size >> PAGE_SHIFT);
 

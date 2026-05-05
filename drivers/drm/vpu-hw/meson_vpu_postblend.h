@@ -115,6 +115,15 @@
 /* txhd2 loopback register */
 #define VPP_PROJECTOR                      0x1d26
 #define VPP_OSD2_MATRIX_EN_CTRL             0x392d
+#define VPP_OSD2_MATRIX_COEF00_01           0x3920
+#define VPP_OSD2_MATRIX_COEF02_10           0x3921
+#define VPP_OSD2_MATRIX_COEF11_12           0x3922
+#define VPP_OSD2_MATRIX_COEF20_21           0x3923
+#define VPP_OSD2_MATRIX_COEF22              0x3924
+#define VPP_OSD2_MATRIX_OFFSET0_1           0x3929
+#define VPP_OSD2_MATRIX_OFFSET2             0x392a
+#define VPP_OSD2_MATRIX_PRE_OFFSET0_1       0x392b
+#define VPP_OSD2_MATRIX_PRE_OFFSET2         0x392c
 
 struct postblend_reg_s {
 	u32 vpp_osd1_bld_h_scope;

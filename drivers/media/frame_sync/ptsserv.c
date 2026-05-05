@@ -1532,9 +1532,9 @@ int pts_start(u8 type)
 #else
 				if (!tsync_get_new_arch()) {
 					ptable->buf_start =
-						READ_VREG(VLD_MEM_VIFIFO_START_PTR);
+						READ_DOSREG(VLD_MEM_VIFIFO_START_PTR);
 					ptable->buf_size =
-						READ_VREG(VLD_MEM_VIFIFO_END_PTR)
+						READ_DOSREG(VLD_MEM_VIFIFO_END_PTR)
 						- ptable->buf_start + 8;
 				}
 #endif

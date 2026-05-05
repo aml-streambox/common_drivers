@@ -31,4 +31,5 @@ int set_video_mute_info(u32 owner, bool on);
 void check_video_mute(void);
 bool get_video_mute_val(u32 owner);
 void vppx_vdx_mux_set(void);
+void rx_mute_vpp(u8 port_type);
 #endif

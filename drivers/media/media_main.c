@@ -12,13 +12,49 @@
 #include <linux/module.h>
 #include <linux/uaccess.h>
 #include <linux/of.h>
+#include <linux/sizes.h>
 #include <linux/ctype.h>
 #include <linux/kallsyms.h>
 #include <linux/cma.h>
 #include <linux/extcon-provider.h>
 #include <linux/mm.h>
 #include <linux/amlogic/gki_module.h>
+#include <linux/amlogic/media/codec_mm/codec_mm.h>
 #include "media_main.h"
+
+#ifndef CONFIG_AMLOGIC_MEDIA_CODEC_MM
+struct codec_mm_s *codec_mm_alloc(const char *owner, int size, int align2n,
+					  int memflags)
+{
+	return NULL;
+}
+
+void codec_mm_release(struct codec_mm_s *mem, const char *owner)
+{
+}
+
+void *codec_mm_phys_to_virt(unsigned long phy_addr)
+{
+	return phy_addr ? phys_to_virt(phy_addr) : NULL;
+}
+
+void codec_mm_dma_flush(void *vaddr, int size, enum dma_data_direction dir)
+{
+}
+
+unsigned long dma_get_cma_size_int_byte(struct device *dev)
+{
+	return CONFIG_CMA_SIZE_MBYTES * SZ_1M;
+}
+
+void codec_mm_memset(ulong phys, u32 val, u32 size)
+{
+	void *vaddr = codec_mm_phys_to_virt(phys);
+
+	if (vaddr)
+		memset(vaddr, val, size);
+}
+#endif
 
 #ifndef CONFIG_AMLOGIC_MEDIA_VIDEO
 void set_output_mute(bool on)
@@ -194,3 +230,4 @@ module_init(media_main_init);
 module_exit(media_main_exit);
 MODULE_DESCRIPTION("Amlogic media support module");
 MODULE_LICENSE("GPL v2");
+MODULE_IMPORT_NS("DMA_BUF");

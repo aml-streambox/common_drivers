@@ -281,42 +281,7 @@ static inline u64 get_time_us(void)
 
 static ulong get_dbuf_addr(struct dma_buf *dbuf)
 {
-	struct dma_heap *heap = NULL;
-	struct dma_buf_attachment *dba;
-	struct sg_table *sgt;
-	ulong addr;
-
-	heap = dma_heap_find(CODECMM_HEAP_NAME);
-	if (!heap) {
-		pr_err("%s: heap is NULL\n", __func__);
-		return 0;
-	}
-
-	/* create attachment for the dmabuf with the user device */
-	dba = dma_buf_attach(dbuf, dma_heap_get_dev(heap));
-	if (IS_ERR(dba)) {
-		dma_heap_put(heap);
-		pr_err("failed to attach dmabuf\n");
-		return 0;
-	}
-
-	/* get the associated scatterlist for this buffer */
-	sgt = dma_buf_map_attachment(dba, DMA_BIDIRECTIONAL);
-	if (IS_ERR(sgt)) {
-		dma_heap_put(heap);
-		dma_buf_detach(dbuf, dba);
-		pr_err("Error getting dmabuf scatterlist\n");
-		return 0;
-	}
-
-	addr = sg_dma_address(sgt->sgl);
-
-	/* unmap attachment and detach dbuf */
-	dma_buf_unmap_attachment(dba, sgt, DMA_BIDIRECTIONAL);
-	dma_buf_detach(dbuf, dba);
-	dma_heap_put(heap);
-
-	return addr;
+	return 0;
 }
 
 struct file *find_next_fd_rcu(struct task_struct *task, u32 *ret_fd)
@@ -331,7 +296,7 @@ struct file *find_next_fd_rcu(struct task_struct *task, u32 *ret_fd)
 	files = task->files;
 	if (files) {
 		for (; fd < files_fdtable(files)->max_fds; fd++) {
-			file = files_lookup_fd_rcu(files, fd);
+			file = files_lookup_fd_raw(files, fd);
 			if (file)
 				break;
 		}
@@ -396,7 +361,7 @@ static void find_ref_process(const struct dma_buf *dbuf, struct seq_file *m)
 	struct task_struct *tsk = NULL;
 	bool have_leaf = false;
 
-	read_lock(&tasklist_lock);
+	rcu_read_lock();
 
 	for_each_process(tsk) {
 		if (tsk->flags & PF_KTHREAD)
@@ -409,7 +374,7 @@ static void find_ref_process(const struct dma_buf *dbuf, struct seq_file *m)
 	if (have_leaf)
 		cs_printf(m, "|   |__ leaf end\n");
 
-	read_unlock(&tasklist_lock);
+	rcu_read_unlock();
 }
 
 static bool is_need_track(const struct dma_buf *d)
@@ -512,7 +477,7 @@ int codec_mm_dbuf_walk(struct seq_file *m)
 
 	cs_printf(m, "Dbuf walk type:%x.\n", dbuf_track_type_flag);
 
-	ret = get_each_dmabuf(walk_dbuf_callback, m);
+	ret = aml_get_each_dmabuf(walk_dbuf_callback, &dma_buf_list, m);
 
 	cs_printf(m, "|__ walk end\n");
 
@@ -969,7 +934,7 @@ static void build_dma_buf_list(struct seq_file *m,
 {
 	struct task_struct *tsk = NULL;
 
-	read_lock(&tasklist_lock);
+	rcu_read_lock();
 
 	for_each_process(tsk) {
 		if (tsk->flags & PF_KTHREAD)
@@ -977,7 +942,7 @@ static void build_dma_buf_list(struct seq_file *m,
 		find_dma_buf_in_tsk(tsk, m, dma_buf_list);
 	}
 
-	read_unlock(&tasklist_lock);
+	rcu_read_unlock();
 }
 
 int dmabuf_track_cs_show(struct seq_file *m, struct codec_state_node *cs)
@@ -1052,6 +1017,3 @@ void codec_mm_track_exit(void)
 
 	codec_state_unregister(&trk->cs);
 }
-
-MODULE_IMPORT_NS(MINIDUMP);
-

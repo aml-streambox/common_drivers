@@ -68,13 +68,19 @@ struct vpu_conf_s vpu_conf = {
 	.switch_gpl = false,
 };
 
+static bool vpu_probe_done;
+
+bool vpu_probe_ready(void)
+{
+	return vpu_probe_done;
+}
+
 int vpu_chip_valid_check(void)
 {
 	int ret = 0;
 
 	if (!vpu_conf.data) {
-		VPUERR("invalid VPU in current chip\n");
-		ret = -1;
+		ret = -ENODEV;
 	}
 	return ret;
 }
@@ -3030,6 +3036,7 @@ static int vpu_probe(struct platform_device *pdev)
 #endif
 
 	VPUPR("%s OK\n", __func__);
+	vpu_probe_done = true;
 	return 0;
 }
 
@@ -3043,6 +3050,7 @@ static void vpu_remove(struct platform_device *pdev)
 	remove_vpu_debug_class();
 #endif
 	vpu_conf.clk_vmod = NULL;
+	vpu_probe_done = false;
 }
 
 static void vpu_shutdown(struct platform_device *pdev)

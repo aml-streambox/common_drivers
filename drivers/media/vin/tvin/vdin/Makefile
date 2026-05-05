@@ -18,9 +18,11 @@ $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_ctl_s5.o
 $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_afbce.o
 $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_mmu_box.o
 $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_mem_scatter.o
+ifdef CONFIG_AMLOGIC_MEDIA_VIDEOCAPTURE
 $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_v4l2.o
 $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_v4l2_dbg.o
 $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_v4l2_if.o
+endif
 $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_hdr.o
 endif
 $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_ctl.o
@@ -28,4 +30,3 @@ $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_screen.o
 $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_sm.o
 $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_canvas.o
 $(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_VDIN) += vin/tvin/vdin/vdin_hw.o
-
