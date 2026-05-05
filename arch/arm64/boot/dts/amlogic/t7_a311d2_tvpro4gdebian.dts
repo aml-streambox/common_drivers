@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
-/*
- * Copyright (c) 2023 Khadas Technology Co.,Ltd. All rights reserved.
- * Copyright (c) 2025 retro98boy <retro98boy@qq.com>
- */
-
 /dts-v1/;
 
-#include "t7_a311d2_tvpro8gdebian.dts"
+#include "amlogic-t7-a311d2-tvpro.dts"
 
 / {
+	model = "CoreLab A311D2-TVPro 4G";
 	amlogic-dt-id = "t7_a311d2_tvpro4g";
-	compatible = "t7_a311d2_tvpro4g";
+	compatible = "corelab,a311d2-tvpro-4g", "corelab,a311d2-tvpro", "amlogic,a311d2", "amlogic,t7";
 
-	memory@00000000 {
-		linux,usable-memory = <0x00000000 0x00000000 0x00000000 0xE0000000
-								0x00000001 0x00000000 0x00000000 0x20000000>;
+	memory@0 {
+		reg = <0x0 0x0 0x0 0xe0000000
+		       0x1 0x0 0x0 0x20000000>; /* 4 GB */
+		linux,usable-memory = <0x0 0x0 0x0 0xe0000000
+		                       0x1 0x0 0x0 0x20000000>;
 	};
 };

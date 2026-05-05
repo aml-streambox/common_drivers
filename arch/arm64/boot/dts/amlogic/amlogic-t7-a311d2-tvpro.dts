@@ -1086,9 +1086,12 @@
 };
 
 &amhdmitx {
+	repeater_tx = <0>;
 	enc_idx = <2>;
-	/* Use Linux userspace HDCP policy so DRM does not take the Android path. */
-	hdcp_ctl_lvl = <2>;
+	vrr_type = <1>;
+	hdmi_repeater = <1>;
+	hdcp_ctl_lvl = <1>;
+	max_refreshrate = <240>;
 	status = "okay";
 };
 
