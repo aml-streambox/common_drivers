@@ -384,7 +384,7 @@ int resample_set(enum resample_idx id, enum samplerate_index index)
 			    p_resample->chipinfo &&
 			    !p_resample->chipinfo->watchdog) {
 				p_resample->timer_running = false;
-				del_timer(&p_resample->timer);
+				timer_delete(&p_resample->timer);
 			}
 		} else if (p_resample->chipinfo->resample_version == AXG_RESAMPLE) {
 			frhdmirx_afifo_reset();
@@ -846,6 +846,10 @@ static const struct of_device_id resample_device_id[] = {
 		.compatible = "amlogic, t3x-resample-c",
 		.data = &t3x_resample_c_chipinfo,
 	},
+	{
+		.compatible = "amlogic, sc2-resample-a",
+		.data = &sc2_resample_a_chipinfo,
+	},
 #endif
 	{
 		.compatible = "amlogic, t5-resample-a",
@@ -854,10 +858,6 @@ static const struct of_device_id resample_device_id[] = {
 	{
 		.compatible = "amlogic, t5-resample-b",
 		.data = &t5_resample_b_chipinfo,
-	},
-	{
-		.compatible = "amlogic, sc2-resample-a",
-		.data = &sc2_resample_a_chipinfo,
 	},
 	{}
 };
@@ -1132,7 +1132,7 @@ static void resample_platform_shutdown(struct platform_device *pdev)
 }
 
 /*don't use devm_kzalloc, when use global pointer*/
-int resample_platform_remove(struct platform_device *pdev)
+void resample_platform_remove(struct platform_device *pdev)
 {
 	struct audioresample *p_resample = dev_get_drvdata(&pdev->dev);
 
@@ -1147,7 +1147,6 @@ int resample_platform_remove(struct platform_device *pdev)
 		}
 		kfree(p_resample);
 	}
-	return 0;
 }
 
 static struct platform_driver resample_platform_driver = {

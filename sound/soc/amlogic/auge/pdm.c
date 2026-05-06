@@ -1388,7 +1388,7 @@ err:
 
 }
 
-static int aml_pdm_platform_remove(struct platform_device *pdev)
+static void aml_pdm_platform_remove(struct platform_device *pdev)
 {
 	struct aml_pdm *p_pdm = dev_get_drvdata(&pdev->dev);
 	clk_disable_unprepare(p_pdm->sysclk_srcpll);
@@ -1405,7 +1405,6 @@ static int aml_pdm_platform_remove(struct platform_device *pdev)
 	register_early_suspend(&pdm_platform_early_suspend_handler[p_pdm->pdm_id]);
 #endif
 
-	return 0;
 }
 
 static int pdm_platform_suspend(struct platform_device *pdev, pm_message_t state)

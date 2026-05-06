@@ -23,6 +23,7 @@ config AMLOGIC_DRM
 	select AMLOGIC_VOUT_SERVE
 	select AMLOGIC_HDMITX_COMMON
 	select AMLOGIC_HDMITX21
+	select DRM_CLIENT_SELECTION
 	help
 		amlogic new soc display controller
 		use the pipeline and modularized

@@ -23,7 +23,9 @@
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_flip_work.h>
+#include <drm/clients/drm_client_setup.h>
 #include <drm/drm_crtc_helper.h>
+#include <drm/drm_fbdev_dma.h>
 #include <drm/drm_plane_helper.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_fb_dma_helper.h>
@@ -223,6 +225,10 @@ static struct drm_driver meson_driver = {
 	.dumb_map_offset	= drm_gem_dumb_map_offset,
 #endif
 
+#ifndef CONFIG_AMLOGIC_DRM_USE_ION
+	DRM_FBDEV_DMA_DRIVER_OPS,
+#endif
+
 	/* Misc */
 	.fops			= &meson_drm_fops,
 	.name			= DRIVER_NAME,
@@ -402,6 +408,9 @@ static int am_meson_drm_bind(struct device *dev)
 	if (ret)
 		goto err_fbdev_fini;
 	drm_helper_hpd_irq_event(drm);
+#ifndef CONFIG_AMLOGIC_DRM_USE_ION
+	drm_client_setup(drm, NULL);
+#endif
 	ret = meson_drm_sysfs_register(drm);
 	if (ret)
 		goto err_drm_dev_unregister;

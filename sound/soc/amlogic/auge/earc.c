@@ -3281,7 +3281,7 @@ static int earc_platform_probe(struct platform_device *pdev)
 	return 0;
 }
 
-int earc_platform_remove(struct platform_device *pdev)
+void earc_platform_remove(struct platform_device *pdev)
 {
 #ifdef CONFIG_AMLOGIC_HDMITX21
 	if (!IS_ERR(s_earc->rx_top_map))
@@ -3293,7 +3293,6 @@ int earc_platform_remove(struct platform_device *pdev)
 #endif
 	s_earc = NULL;
 	snd_soc_unregister_component(&pdev->dev);
-	return 0;
 }
 
 static int earc_platform_resume(struct platform_device *pdev)

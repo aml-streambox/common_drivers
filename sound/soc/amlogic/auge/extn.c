@@ -509,10 +509,10 @@ static int extn_create_controls(struct snd_card *card,
 	return 0;
 }
 
-static int extn_dai_probe(struct snd_soc_dai *cpu_dai)
+static int extn_component_probe(struct snd_soc_component *component)
 {
-	struct snd_card *card = cpu_dai->component->card->snd_card;
-	struct extn *p_extn = snd_soc_dai_get_drvdata(cpu_dai);
+	struct snd_card *card = component->card->snd_card;
+	struct extn *p_extn = snd_soc_component_get_drvdata(component);
 
 	pr_info("asoc debug: %s-%d\n", __func__, __LINE__);
 
@@ -720,7 +720,6 @@ static struct snd_soc_dai_driver extn_dai[] = {
 	{
 		.name = "EXTN",
 		.id = 0,
-		.probe = extn_dai_probe,
 		.playback = {
 		      .channels_min = 1,
 		      .channels_max = 32,
@@ -1141,6 +1140,7 @@ static const struct snd_kcontrol_new extn_controls[] = {
 
 static const struct snd_soc_component_driver extn_component = {
 	.name = DRV_NAME,
+	.probe = extn_component_probe,
 	.controls       = extn_controls,
 	.num_controls   = ARRAY_SIZE(extn_controls),
 

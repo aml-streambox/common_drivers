@@ -78,8 +78,8 @@ void pwrdet_set(bool enable)
 		audiobus_read(EE_AUDIO_POW_DET_TH_LO));
 }
 
-static ssize_t pwrdet_enable_show(struct class *cla,
-				  struct class_attribute *attr, char *buf)
+static ssize_t pwrdet_enable_show(const struct class *cla,
+				  const struct class_attribute *attr, char *buf)
 {
 	int enable = 1;
 
@@ -91,15 +91,16 @@ static ssize_t pwrdet_enable_show(struct class *cla,
 	return sprintf(buf, "%d\n", enable);
 }
 
-static struct class_attribute pwrdet_attrs[] = {
-	__ATTR_RO(pwrdet_enable),
-
-	__ATTR_NULL
+static CLASS_ATTR_RO(pwrdet_enable);
+static struct attribute *pwrdet_class_attrs[] = {
+	&class_attr_pwrdet_enable.attr,
+	NULL
 };
+ATTRIBUTE_GROUPS(pwrdet_class);
 
 static struct class pwrdet_class = {
 	.name = DRV_NAME,
-	.class_attrs = pwrdet_attrs,
+	.class_groups = pwrdet_class_groups,
 };
 
 static struct pwrdet_chipinfo axg_pwrdet_chipinfo = {
@@ -200,9 +201,8 @@ fail:
 	return ret;
 }
 
-static int aml_pwrdet_platform_remove(struct platform_device *pdev)
+static void aml_pwrdet_platform_remove(struct platform_device *pdev)
 {
-	return 0;
 }
 
 static int aml_pwrdet_platform_suspend(struct platform_device *pdev,
@@ -211,10 +211,10 @@ static int aml_pwrdet_platform_suspend(struct platform_device *pdev,
 	struct device *dev = &pdev->dev;
 	struct aml_pwrdet *p_pwrdet = dev_get_drvdata(dev);
 
-	pr_info("%s entry freeze:%d\n", __func__, is_pm_freeze_mode());
+	pr_info("%s entry freeze:%d\n", __func__, is_pm_s2idle_mode());
 
 	/*whether in freeze*/
-	if (!is_pm_freeze_mode())
+	if (!is_pm_s2idle_mode())
 		return 0;
 
 	pwrdet_set(true);
@@ -234,7 +234,7 @@ static int aml_pwrdet_platform_resume(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct aml_pwrdet *p_pwrdet = dev_get_drvdata(dev);
 
-	pr_info("%s freeze:%d\n", __func__, is_pm_freeze_mode());
+	pr_info("%s freeze:%d\n", __func__, is_pm_s2idle_mode());
 
 	/* pm clean irq */
 	dev_pm_clear_wake_irq(dev);

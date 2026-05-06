@@ -16,7 +16,7 @@
 
 static struct drm_display_mode dummy_mode = {
 	.name = "dummy_l",
-	.type = DRM_MODE_TYPE_USERDEF,
+	.type = DRM_MODE_TYPE_DRIVER,
 	.status = MODE_OK,
 	.clock = 25000,
 	.hdisplay = 720,

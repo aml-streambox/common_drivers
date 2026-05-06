@@ -1325,13 +1325,12 @@ static int vad_platform_resume(struct platform_device *pdev)
 	return 0;
 }
 
-static int vad_platform_remove(struct platform_device *pdev)
+static void vad_platform_remove(struct platform_device *pdev)
 {
 	struct vad *p_vad = dev_get_drvdata(&pdev->dev);
 
 	/* free buffer */
 	snd_dma_free_pages(&p_vad->dma_buffer);
-	return 0;
 }
 
 static void vad_platform_shutdown(struct platform_device *pdev)
