@@ -14,6 +14,7 @@
 #include <linux/dma-map-ops.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/random.h>
+#include <linux/sched.h>
 #include <linux/timer.h>
 #include <linux/vmalloc.h>
 #include <linux/amlogic/pm.h>
@@ -38,6 +39,20 @@
 #ifndef prandom_bytes
 #define prandom_bytes(buf, bytes) get_random_bytes(buf, bytes)
 #endif
+
+static inline int aml_sched_setscheduler(struct task_struct *p, int policy,
+						 struct sched_param *param)
+{
+	if (policy == SCHED_FIFO) {
+		sched_set_fifo(p);
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+#define sched_setscheduler(p, policy, param) \
+	aml_sched_setscheduler(p, policy, param)
 
 static inline struct page *aml_dma_alloc_from_contiguous(struct device *dev,
 							 size_t count,
