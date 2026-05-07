@@ -62,6 +62,24 @@
 			reg = <0x0 0x3f800000 0x0 0x00800000>;
 		};
 
+		codec_mm_cma: linux,codec_mm_cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x0 0x40000000>;
+			alignment = <0x0 0x00400000>;
+			linux,contiguous-region;
+			alloc-ranges = <0x0 0x0 0x0 0xe0000000>;
+			clear-map;
+		};
+
+		vdin1_cma_reserved: linux,vdin1_cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x0 0x20000000>;
+			alignment = <0x0 0x00400000>;
+			alloc-ranges = <0x0 0x0 0x0 0xe0000000>;
+		};
+
 		/* Vendor U-Boot hardcodes this node path during rsvmem check. */
 		secmon_reserved: linux,secmon {
 			compatible = "shared-dma-pool";
@@ -90,6 +108,54 @@
 		out_base_func = <0x82000021>;
 		inout_size_func = <0x8200002a>;
 		reserve_mem_size = <0x03300000>;
+	};
+
+	codec_mm {
+		compatible = "amlogic, codec, mm";
+		memory-region = <&codec_mm_cma>;
+		dev_name = "codec_mm";
+		status = "okay";
+	};
+
+	canvas: canvas {
+		compatible = "amlogic, meson, canvas";
+		dev_name = "amlogic-canvas";
+		status = "okay";
+		reg = <0x0 0xfe036048 0x0 0x2000>;
+	};
+
+	meson_uvm {
+		compatible = "amlogic, meson_uvm";
+		status = "okay";
+	};
+
+	meson_videotunnel {
+		compatible = "amlogic, meson_videotunnel";
+		status = "okay";
+	};
+
+	video_composer {
+		compatible = "amlogic, video_composer";
+		dev_name = "video_composer";
+		status = "okay";
+	};
+
+	amvideom: meson-amvideom {
+		compatible = "amlogic, amvideom-t7";
+		dev_name = "amvideom";
+		status = "okay";
+		interrupts = <GIC_SPI 197 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 194 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 82 IRQ_TYPE_EDGE_RISING>;
+		interrupt-names = "vsync", "vsync_viu2", "vsync_viu3";
+	};
+
+	vpu_security {
+		compatible = "amlogic, meson-t7, vpu_security";
+		dev_name = "amlogic-vpu-security";
+		status = "okay";
+		interrupts = <GIC_SPI 220 IRQ_TYPE_EDGE_RISING>;
+		interrupt-names = "vpu_security";
 	};
 
 	xtal: xtal-clk {
@@ -230,6 +296,27 @@
 		compatible = "fixed-clock";
 		clock-frequency = <500000000>;
 		clock-output-names = "fclk_div4";
+		#clock-cells = <0>;
+	};
+
+	hdmirx_2m: hdmirx-2m-clk {
+		compatible = "fixed-clock";
+		clock-frequency = <2000000>;
+		clock-output-names = "hdmirx_2m";
+		#clock-cells = <0>;
+	};
+
+	hdmirx_5m: hdmirx-5m-clk {
+		compatible = "fixed-clock";
+		clock-frequency = <5000000>;
+		clock-output-names = "hdmirx_5m";
+		#clock-cells = <0>;
+	};
+
+	hdmirx_25m: hdmirx-25m-clk {
+		compatible = "fixed-clock";
+		clock-frequency = <25000000>;
+		clock-output-names = "hdmirx_25m";
 		#clock-cells = <0>;
 	};
 
@@ -485,6 +572,109 @@
 		assigned-clock-rates = <0>, <800000000>, <0>;
 		status = "okay";
 	};
+
+	hdmirx: hdmirx {
+		compatible = "amlogic, hdmirx_t7";
+		status = "okay";
+		pinctrl-names = "hdmirx_pins";
+		pinctrl-0 = <&hdmirx_a_mux &hdmirx_b_mux &hdmirx_c_mux>;
+		repeat = <0>;
+		power-domains = <&pwrc PWRC_T7_HDMIRX_ID>;
+		interrupts = <GIC_SPI 57 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&mpll_50m>,
+			 <&xtal>,
+			 <&xtal>,
+			 <&hdmirx_2m>,
+			 <&hdmirx_5m>,
+			 <&hdmirx_25m>,
+			 <&xtal>,
+			 <&fdiv4>,
+			 <&fdiv5>;
+		clock-names = "hdmirx_cfg_clk",
+			      "cts_hdmirx_acr_ref_clk",
+			      "cts_hdmirx_meter_clk",
+			      "cts_hdmirx_2m_clk",
+			      "cts_hdmirx_5m_clk",
+			      "cts_hdmirx_hdcp2x_eclk",
+			      "xtal",
+			      "fclk_div4",
+			      "fclk_div5";
+		hdmirx_id = <0>;
+		en_4k_2_2k = <0>;
+		hpd_low_cec_off = <1>;
+		arc_port = <1>;
+		disable_port = <0x0>;
+		/* Keep the 5.15 vendor register-map order. */
+		reg = <0x0 0x0 0x0 0x0
+		       0x0 0xff63c000 0x0 0x2000
+		       0x0 0xffe0d000 0x0 0x2000
+		       0x0 0x0 0x0 0x0
+		       0x0 0x0 0x0 0x0
+		       0x0 0x0 0x0 0x0
+		       0x0 0xfe398000 0x0 0x18000
+		       0x0 0xfe000000 0x0 0x1fff>;
+	};
+
+	vdin0: vdin0 {
+		compatible = "amlogic, vdin-t7";
+		dev_name = "vdin0";
+		status = "okay";
+		reserve-iomap = "true";
+		flag_cma = <0x101>;
+		cma_size = <280>;
+		frame_buff_num = <10>;
+		interrupts = <GIC_SPI 210 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 214 IRQ_TYPE_EDGE_RISING>;
+		interrupt-names = "vsync_int",
+				  "mif2_meta_wr_done_int";
+		rdma-irq = <2>;
+		clocks = <&fdiv5>, <&clkc_periphs CLKID_VDIN_MEAS_GATE>;
+		clock-names = "fclk_div5", "cts_vdin_meas_clk";
+		vdin_id = <0>;
+		tv_bit_mode = <0x235>;
+		afbce_bit_mode = <0x11>;
+		v4l_support_en = <0>;
+		v4l_vd_num = <70>;
+		driver = "vdin_video";
+		card = "mesont7";
+		bus_info = "vdin0 v4l2";
+		version = <0x20220120>;
+		fe_ports = <0x00001001
+			    0x00004000
+			    0x00004001
+			    0x00004002>;
+		vdin_function_sel = <0x101>;
+		double_write_en;
+		urgent_en;
+	};
+
+	vdin1: vdin1 {
+		compatible = "amlogic, vdin-t7";
+		dev_name = "vdin1";
+		status = "okay";
+		reserve-iomap = "true";
+		memory-region = <&vdin1_cma_reserved>;
+		flag_cma = <0>;
+		interrupts = <GIC_SPI 212 IRQ_TYPE_EDGE_RISING>;
+		interrupt-names = "vsync_int";
+		rdma-irq = <4>;
+		vdin_id = <1>;
+		tv_bit_mode = <0x15>;
+		v4l_support_en = <0>;
+		v4l_vd_num = <71>;
+		driver = "vdin_video";
+		card = "mesont7";
+		bus_info = "vdin1 v4l2";
+		version = <0x20220120>;
+		fe_ports = <0x0000a002
+			    0x0000a003
+			    0x0000a004
+			    0x0000a005
+			    0x0000a006
+			    0x0000a007
+			    0x0000a008>;
+		vdin_function_sel = <0x400>;
+	};
 };
 
 &apb4 {
@@ -592,6 +782,36 @@
 			function = "eth";
 			bias-disable;
 			drive-strength-microamp = <4000>;
+		};
+	};
+
+	hdmirx_a_mux: hdmirx-a-mux {
+		mux {
+			groups = "hdmirx_a_hpd",
+				 "hdmirx_a_det",
+				 "hdmirx_a_sda",
+				 "hdmirx_a_sck";
+			function = "hdmirx_a";
+		};
+	};
+
+	hdmirx_b_mux: hdmirx-b-mux {
+		mux {
+			groups = "hdmirx_b_hpd",
+				 "hdmirx_b_det",
+				 "hdmirx_b_sda",
+				 "hdmirx_b_sck";
+			function = "hdmirx_b";
+		};
+	};
+
+	hdmirx_c_mux: hdmirx-c-mux {
+		mux {
+			groups = "hdmirx_c_hpd",
+				 "hdmirx_c_det",
+				 "hdmirx_c_sda",
+				 "hdmirx_c_sck";
+			function = "hdmirx_c";
 		};
 	};
 

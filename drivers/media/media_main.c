@@ -74,6 +74,8 @@ u32 efuse_obj_read(u32 obj_id, char *name, u8 *buff, u32 *size)
 }
 #endif
 
+#if !defined(CONFIG_AMLOGIC_MESON_CLK_MEASURE) && \
+	!defined(CONFIG_AMLOGIC_MESON_CLK_MEASURE_MODULE)
 unsigned int meson_clk_measure(unsigned int id)
 {
 	return 0;
@@ -83,6 +85,7 @@ unsigned int meson_clk_measure_with_precision(unsigned int id, unsigned int prec
 {
 	return meson_clk_measure(id);
 }
+#endif
 
 //#define DEBUG
 #define call_sub_init(func) \

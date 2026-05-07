@@ -34,7 +34,7 @@ void vad_set_trunk_data_readable(bool en)
 	readable = en;
 }
 
-static ssize_t readable_show(struct class *cla, struct class_attribute *attr,
+static ssize_t readable_show(const struct class *cla, const struct class_attribute *attr,
 			      char *buf)
 {
 	return sprintf(buf, "%d\n", readable);
@@ -49,7 +49,6 @@ ATTRIBUTE_GROUPS(vad_class);
 
 static struct class vad_class = {
 	.name = DRV_NAME,
-	.owner = THIS_MODULE,
 	.class_groups = vad_class_groups,
 };
 
@@ -165,4 +164,3 @@ void __exit vad_dev_exit(void)
 module_init(vad_dev_init);
 module_exit(vad_dev_exit);
 #endif
-

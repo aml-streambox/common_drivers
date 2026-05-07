@@ -195,6 +195,12 @@
 		method = "smc";
 	};
 
+	cpu_info {
+		compatible = "amlogic, cpuinfo";
+		status = "okay";
+		cpuinfo_cmd = <0x82000044>;
+	};
+
 	sm: secure-monitor {
 		compatible = "amlogic,meson-gxbb-sm";
 
@@ -683,6 +689,11 @@
 					      "fdiv4",
 					      "fdiv5",
 					      "fdiv7";
+			};
+
+			meson_clk_msr@48000 {
+				compatible = "amlogic,meson-t7-clk-measure";
+				reg = <0x0 0x48000 0x0 0x1c>;
 			};
 
 			reset: reset-controller@2000 {

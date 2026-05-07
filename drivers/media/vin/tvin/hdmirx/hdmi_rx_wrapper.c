@@ -8525,4 +8525,3 @@ void hdmirx_timer_handler(struct timer_list *t)
 	devp->timer.expires = jiffies + TIMER_STATE_CHECK;
 	add_timer(&devp->timer);
 }
-

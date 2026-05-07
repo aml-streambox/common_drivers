@@ -7569,4 +7569,3 @@ int aml_phy_get_def_trim_value(void)
 	else
 		return 0;
 }
-

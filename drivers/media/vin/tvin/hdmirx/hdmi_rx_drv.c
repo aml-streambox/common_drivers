@@ -419,28 +419,39 @@ int rx_init_reg_map(struct platform_device *pdev)
 int rx_init_irq(struct platform_device *pdev, struct hdmirx_dev_s *hdevp)
 {
 	int i;
-	struct resource *res = 0;
-	int ret[4] = {0};
+	int irq;
+	int ret;
+	int requested = 0;
 
 	irqreturn_t (*irq_handler[4])(int, void*) = {
 		irq0_handler, irq1_handler, irq2_handler, irq3_handler};
 
 	for (i = 0; i < 4; i++) {
-		res = platform_get_resource(pdev, IORESOURCE_IRQ, i);
-		ret[i] = res ? 0 : -ENXIO;
-		if (!res) {
-			rx_pr("%s: can't get irq resource\n", __func__);
+		irq = platform_get_irq_optional(pdev, i);
+		if (irq == -ENXIO) {
+			if (!requested) {
+				rx_pr("%s: can't get irq resource\n", __func__);
+				return irq;
+			}
 			break;
 		}
-		hdevp->irq[i] = res->start;
+		if (irq < 0) {
+			rx_pr("%s: can't get irq%d: %d\n", __func__, i, irq);
+			return irq;
+		}
+		hdevp->irq[i] = irq;
 		snprintf(hdevp->irq_name[i], sizeof(hdevp->irq_name[i]),
 			"hdmirx%d-irq", i);
 		rx_pr("hdevp irq: %d, %d\n", i, hdevp->irq[i]);
-		if (request_irq(hdevp->irq[i], irq_handler[i],
-			IRQF_SHARED, hdevp->irq_name[i], (void *)&rx))
-			rx_pr(__func__, "RX IRQ request");
+		ret = devm_request_irq(&pdev->dev, hdevp->irq[i], irq_handler[i],
+			IRQF_SHARED, hdevp->irq_name[i], (void *)&rx);
+		if (ret) {
+			rx_pr("%s: RX IRQ%d request failed: %d\n", __func__, i, ret);
+			return ret;
+		}
+		requested++;
 	}
-	return ret[0];
+	return 0;
 }
 
 /*
@@ -3709,7 +3720,8 @@ static int hdmirx_probe(struct platform_device *pdev)
 		goto fail_create_hdcp_auth_sts;
 	}
 
-	if (rx_init_irq(pdev, hdevp))
+	ret = rx_init_irq(pdev, hdevp);
+	if (ret)
 		goto fail_get_resource_irq;
 
 	/* frontend */
@@ -4097,8 +4109,6 @@ fail_kmalloc_pd_fifo:
 	return ret;
 
 fail_get_resource_irq:
-	return ret;
-
 fail_create_hdcp_auth_sts:
 	device_remove_file(hdevp->dev, &dev_attr_hdcp_auth_sts);
 fail_create_hdmi_hdr_status:

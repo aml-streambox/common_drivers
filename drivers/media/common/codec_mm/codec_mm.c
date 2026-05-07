@@ -2525,6 +2525,10 @@ static void dump_mem_infos(struct seq_file *m)
 
 	buf_size = codec_mm_cal_dump_buf_size();
 	alloc_buf = vzalloc(buf_size);
+	if (!alloc_buf) {
+		pr_err("codec_mm: dump buffer alloc failed, size=%d\n", buf_size);
+		return;
+	}
 	pbuf = alloc_buf;
 
 	s = snprintf(pbuf, buf_size - tsize,

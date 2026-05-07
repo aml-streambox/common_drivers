@@ -403,7 +403,7 @@ static void vfm_init(void)
 	char def_id[VFM_NAME_LEN] = "default";
 	char def_name_chain[] = "decoder amvideo";
 #endif /**/
-#ifdef CONFIG_TVIN_VIUIN
+#ifdef CONFIG_AMLOGIC_MEDIA_VIUIN
 	char def_ext_id[VFM_NAME_LEN] = "default_ext";
 	char def_ext_name_chain[] = "vdin amvideo2";
 #endif /**/
@@ -415,13 +415,21 @@ static void vfm_init(void)
 	char def_amlvideo2_id[VFM_NAME_LEN] = "default_amlvideo2";
 	char def_amlvideo2_chain[] = "vdin1 amlvideo2.1";
 #endif /**/
-#if (defined CONFIG_TVIN_AFE) || (defined CONFIG_TVIN_HDMI)
-#ifdef CONFIG_AMLOGIC_POST_PROCESS_MANAGER
+#if (defined CONFIG_AMLOGIC_MEDIA_TVIN_AFE) || \
+	(defined CONFIG_AMLOGIC_MEDIA_TVIN_HDMI)
+#if (defined CONFIG_AMLOGIC_POST_PROCESS_MANAGER) && \
+	(defined CONFIG_AMLOGIC_MEDIA_DEINTERLACE)
 	char tvpath_id[VFM_NAME_LEN] = "tvpath";
 	char tvpath_chain[] = "vdin0 ppmgr deinterlace amvideo";
-#else
+#elif defined CONFIG_AMLOGIC_POST_PROCESS_MANAGER
+	char tvpath_id[VFM_NAME_LEN] = "tvpath";
+	char tvpath_chain[] = "vdin0 ppmgr amvideo";
+#elif defined CONFIG_AMLOGIC_MEDIA_DEINTERLACE
 	char tvpath_id[VFM_NAME_LEN] = "tvpath";
 	char tvpath_chain[] = "vdin0 deinterlace amvideo";
+#else
+	char tvpath_id[VFM_NAME_LEN] = "tvpath";
+	char tvpath_chain[] = "vdin0 amvideo";
 #endif
 #endif /**/
 #ifdef CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_DOLBYVISION
@@ -452,7 +460,8 @@ static void vfm_init(void)
 	vfm_map_add(def_mipi_id, def_mipi_name_chain);
 #endif /**/
 
-#if (defined CONFIG_TVIN_AFE) || (defined CONFIG_TVIN_HDMI)
+#if (defined CONFIG_AMLOGIC_MEDIA_TVIN_AFE) || \
+	(defined CONFIG_AMLOGIC_MEDIA_TVIN_HDMI)
 	vfm_map_add(tvpath_id, tvpath_chain);
 #endif /**/
 #ifdef CONFIG_AMLOGIC_V4L_VIDEO2
