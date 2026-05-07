@@ -22,13 +22,50 @@
 #include <linux/amlogic/media/amvecm/amvecm.h>
 #include "arch/ve_regs.h"
 #include "arch/vpp_regs.h"
+#include "arch/vpp_hdr_regs.h"
 #include "reg_helper.h"
 #include "amve.h"
+#include "amcsc.h"
+
+#define OSD_HDR2_BYPASS_CTRL	(BIT(16) | BIT(15) | BIT(14))
+
+static void amvecm_drm_osd_hdr_bypass(u32 hdr_ctrl, u32 matrixi_base,
+				      u32 matrixi_en_ctrl, u32 matrixo_en_ctrl)
+{
+	WRITE_VPP_REG(matrixi_base + 0x0, 0x00ba0273);
+	WRITE_VPP_REG(matrixi_base + 0x1, 0x003f1f9a);
+	WRITE_VPP_REG(matrixi_base + 0x2, 0x1ea801c0);
+	WRITE_VPP_REG(matrixi_base + 0x3, 0x01c01e6a);
+	WRITE_VPP_REG(matrixi_base + 0x4, 0x00001fd8);
+	WRITE_VPP_REG(matrixi_base + 0x5, 0x0);
+	WRITE_VPP_REG(matrixi_base + 0x6, 0x0);
+	WRITE_VPP_REG(matrixi_base + 0x7, 0x0);
+	WRITE_VPP_REG(matrixi_base + 0x8, 0x00400200);
+	WRITE_VPP_REG(matrixi_base + 0x9, 0x00000200);
+	WRITE_VPP_REG(matrixi_base + 0xa, 0x0);
+	WRITE_VPP_REG(matrixi_base + 0xb, 0x0);
+	WRITE_VPP_REG(matrixi_base + 0x18, 0x0);
+	WRITE_VPP_REG(matrixi_en_ctrl, 0x1);
+	WRITE_VPP_REG(matrixo_en_ctrl, 0x0);
+	WRITE_VPP_REG(hdr_ctrl, OSD_HDR2_BYPASS_CTRL);
+}
 
 void amvecm_drm_init(u32 index)
 {
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 	amvecm_gamma_init(1);
+	hdr_osd_off(VPP_TOP0);
+	hdr_osd_off(VPP_TOP1);
+	if (get_cpu_type() == MESON_CPU_MAJOR_ID_T7) {
+		amvecm_drm_osd_hdr_bypass(OSD1_HDR2_CTRL,
+			OSD1_HDR2_MATRIXI_COEF00_01,
+			OSD1_HDR2_MATRIXI_EN_CTRL,
+			OSD1_HDR2_MATRIXO_EN_CTRL);
+		amvecm_drm_osd_hdr_bypass(OSD3_HDR2_CTRL,
+			OSD3_HDR2_MATRIXI_COEF00_01,
+			OSD3_HDR2_MATRIXI_EN_CTRL,
+			OSD3_HDR2_MATRIXO_EN_CTRL);
+	}
 #endif
 }
 EXPORT_SYMBOL(amvecm_drm_init);

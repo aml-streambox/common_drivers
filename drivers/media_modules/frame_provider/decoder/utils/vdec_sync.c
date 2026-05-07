@@ -116,11 +116,11 @@ static void timeline_fence_release(struct dma_fence *fence)
 
 	/*pr_info("[VDEC-FENCE] release fence: %lx\n", (ulong) fence);*/
 
-	spin_lock_irqsave(fence->lock, flags);
+	spin_lock_irqsave(&parent->lock, flags);
 	list_del(&pt->link);
 	if (!list_empty(&pt->active_list))
 		list_del(&pt->active_list);
-	spin_unlock_irqrestore(fence->lock, flags);
+	spin_unlock_irqrestore(&parent->lock, flags);
 	sync_timeline_put(parent);
 	dma_fence_free(fence);
 }
@@ -130,7 +130,7 @@ static bool timeline_fence_signaled(struct dma_fence *fence)
 	struct sync_timeline *parent = fence_parent(fence);
 	struct sync_pt *pt = get_sync_pt(fence);
 
-	if (__dma_fence_is_later(fence->seqno, parent->value, fence->ops))
+	if (__dma_fence_is_later(fence, fence->seqno, parent->value))
 		return false;
 
 	if (pt->timestamp > parent->timestamp)
@@ -182,8 +182,6 @@ static const struct dma_fence_ops timeline_fence_ops = {
 	.signaled		= timeline_fence_signaled,
 	.wait			= dma_fence_default_wait,
 	.release		= timeline_fence_release,
-	.fence_value_str	= timeline_fence_value_str,
-	.timeline_value_str	= timeline_fence_timeline_value_str,
 };
 
 /**
@@ -230,6 +228,7 @@ static struct sync_pt *sync_pt_create(struct sync_timeline *obj,
 		return NULL;
 	spin_lock_irqsave(&obj->lock, flags);
 	sync_timeline_get(obj);
+	pt->parent = obj;
 	dma_fence_init(&pt->fence, &timeline_fence_ops, &obj->lock,
 		   obj->context, value);
 	list_add_tail(&pt->link, &obj->pt_list);
@@ -528,5 +527,3 @@ void vdec_sync_core_init(void)
 	spin_lock_init(&vdec_sync_core.vdec_sync_lock);
 }
 EXPORT_SYMBOL(vdec_sync_core_init);
-
-

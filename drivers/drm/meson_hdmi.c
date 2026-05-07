@@ -1728,6 +1728,13 @@ void meson_hdmitx_encoder_atomic_enable(struct drm_encoder *encoder,
 	meson_conn_state->hcs.mode = vmode;
 	hdmitx_common_do_mode_setting(am_hdmi_info.hdmitx_dev->hdmitx_common,
 				      &meson_conn_state->hcs, &old_meson_conn_state->hcs);
+	if (meson_crtc_state->crtc_eotf_type == HDMI_EOTF_TRADITIONAL_GAMMA_SDR &&
+	    tx_comm->vdev) {
+		if (tx_comm->vdev->fresh_tx_hdr_pkt)
+			tx_comm->vdev->fresh_tx_hdr_pkt(NULL);
+		if (tx_comm->vdev->fresh_tx_hdr10plus_pkt)
+			tx_comm->vdev->fresh_tx_hdr10plus_pkt(0, NULL);
+	}
 	meson_vout_notify_mode_change(amcrtc->vout_index,
 		vmode, EVENT_MODE_SET_FINISH);
 	meson_vout_update_mode_name(amcrtc->vout_index, mode->name, "hdmitx");

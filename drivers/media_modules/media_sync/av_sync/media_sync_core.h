@@ -185,7 +185,7 @@ typedef struct videoinfo{
 	int cacheDuration;
 } mediasync_videoinfo;
 
-typedef struct cacheinfo{
+typedef struct mediasync_cacheinfo_s {
 	int cacheSize;
 	int cacheDuration;
 }mediasync_cacheinfo;

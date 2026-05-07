@@ -4504,7 +4504,7 @@ module_param(slow_input, uint, 0664);
 MODULE_PARM_DESC(slow_input, "\n amstream slow_input\n");
 
 /*just for kernel 5.15 compilation, will modify later*/
-MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
 MODULE_DESCRIPTION("AMLOGIC streaming port driver");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Tim Yao <timyao@amlogic.com>");

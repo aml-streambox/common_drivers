@@ -47,6 +47,7 @@ struct sync_timeline {
 
 struct sync_pt {
 	struct dma_fence		fence;
+	struct sync_timeline	*parent;
 	struct list_head	link;
 	struct list_head	active_list;
 	u64			timestamp;
@@ -65,7 +66,7 @@ struct vdec_sync {
 
 static inline struct sync_timeline *fence_parent(struct dma_fence *fence)
 {
-	return container_of(fence->lock, struct sync_timeline, lock);
+	return container_of(fence, struct sync_pt, fence)->parent;
 }
 
 static inline struct sync_pt *get_sync_pt(struct dma_fence *fence)
@@ -104,4 +105,3 @@ void vdec_fence_buffer_count_decrease(struct codec_mm_s *mm, struct codec_mm_cb_
 struct vdec_sync *vdec_sync_get(void);
 
 void vdec_sync_core_init(void);
-

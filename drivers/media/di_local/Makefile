@@ -10,6 +10,6 @@
 
 #CFLAGS_di_local.o := -I$(src)
 ccflags-y += -I$(src)/di_local/
-$(MEDIA_MODULE_NAME)-$(CONFIG_AMLOGIC_MEDIA_DEINTERLACE) += di_local/di_local.o
+$(MEDIA_MODULE_NAME)-y += di_local/di_local.o
 
 #ccflags-y += -I$(COMMON_DRIVERS_DIR)/drivers/media/deinterlace/

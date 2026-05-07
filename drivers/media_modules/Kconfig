@@ -7,7 +7,7 @@ menu "Video Decoders"
 
 config AMLOGIC_MEDIA_VDEC_MPEG12
 	tristate "Amlogic MPEG1/2 Video decoder"
-	default m
+	default n
 	help
 	  Driver for mpeg1/2 video decoder.
 	  select AM_PTSSERVER...
@@ -15,25 +15,25 @@ config AMLOGIC_MEDIA_VDEC_MPEG12
 
 config AMLOGIC_MEDIA_VDEC_MPEG2_MULTI
 	tristate "Amlogic MMPEG2 Video decoder"
-	default m
+	default n
 	help
 	  Driver for Mmpeg2 video decoder.
 
 config AMLOGIC_MEDIA_VDEC_MPEG4
 	tristate "Amlogic MPEG4 Video decoder"
-	default m
+	default n
 	help
 	  Driver for mpeg4 video decoder.
 
 config AMLOGIC_MEDIA_VDEC_MPEG4_MULTI
 	tristate "Amlogic MMPEG4 Video decoder"
-	default m
+	default n
 	help
 	  Driver for Mmpeg4 video decoder.
 
 config AMLOGIC_MEDIA_VDEC_VC1
 	tristate "Amlogic VC1 Video decoder"
-	default m
+	default n
 	help
 	  Driver for vc1 video decoder.
 
@@ -51,7 +51,7 @@ config AMLOGIC_MEDIA_VDEC_H264_MULTI
 
 config AMLOGIC_MEDIA_VDEC_H264_MVC
 	tristate "Amlogic H264MVC Video decoder"
-	default m
+	default n
 	help
 	  Driver for h264mvc video decoder.
 
@@ -63,122 +63,122 @@ config AMLOGIC_MEDIA_VDEC_H265
 
 config AMLOGIC_MEDIA_VDEC_VP9
 	tristate "Amlogic VP9 Video decoder"
-	default m
+	default n
 	help
 	  Driver for vp9 video decoder.
 
 config AMLOGIC_MEDIA_VDEC_MJPEG
 	tristate "Amlogic MJPEG Video decoder"
-	default m
+	default n
 	help
 	  Driver for mjpeg video decoder.
 
 config AMLOGIC_MEDIA_VDEC_MJPEG_MULTI
 	tristate "Amlogic MMJPEG Video decoder"
-	default m
+	default n
 	help
 	  Driver for Mmjpeg video decoder.
 
 config AMLOGIC_MEDIA_VDEC_REAL
 	tristate "Amlogic REAL Video decoder"
-	default m
+	default n
 	help
 	  Driver for real video decoder.
 
 config AMLOGIC_MEDIA_VDEC_AVS
 	tristate "Amlogic AVS Video decoder"
-	default m
+	default n
 	help
 	  Driver for avs video decoder.
 
 config AMLOGIC_MEDIA_VDEC_AVS_MULTI
 	tristate "Amlogic AVS Multi Video decoder"
-	default m
+	default n
 	help
 	  Driver for avs multi video decoder.
 
 config AMLOGIC_MEDIA_VDEC_AVS2
 	tristate "Amlogic AVS2 Video decoder"
-	default m
+	default n
 	help
 	  Driver for avs2 video decoder.
 
 config AMLOGIC_MEDIA_VDEC_AV1
 	tristate "Amlogic AV1 Video decoder"
-	default m
+	default n
 	help
 	  Driver for av1 video decoder.
 
 config AMLOGIC_MEDIA_VDEC_AVS3
 	tristate "Amlogic AVS3 Video decoder"
-	default m
+	default n
 	help
 	  Driver for avs3 video decoder.
 
 config AMLOGIC_MEDIA_VDEC_VP9_FB
 	tristate "Amlogic VP9 FB Video decoder"
-	default m
+	default n
 	help
 	  Driver for vp9 fb video decoder.
 
 config AMLOGIC_MEDIA_VDEC_H265_FB
 	tristate "Amlogic H265 FB Video decoder"
-	default m
+	default n
 	help
 	  Driver for h265 fb video decoder.
 
 config AMLOGIC_MEDIA_VDEC_AV1_FB
 	tristate "Amlogic AV1 FB Video decoder"
-	default m
+	default n
 	help
 	  Driver for av1 fb video decoder.
 
 config AMLOGIC_MEDIA_VDEC_AV1_T5D
 	tristate "Amlogic AV1 T5D Video decoder"
-	default m
+	default n
 	help
 	  Driver for av1 t5d video decoder.
 
 config AMLOGIC_MEDIA_VDEC_AVS2_FB
 	tristate "Amlogic AVS2 FB Video decoder"
-	default m
+	default n
 	help
 	  Driver for avs2 fb video decoder.
 
 
 config AMLOGIC_MEDIA_VENC_H264
 	tristate "Amlogic H264 Encoder support"
-	default m
+	default n
 	help
 	  Internal H264 Encoder driver.
 
 config AMLOGIC_MEDIA_VENC_H265
 	tristate "Amlogic HEVC Encoder support"
-	default m
+	default n
 	help
 	  Internal Hevc Encoder driver.
 
 config AMLOGIC_MEDIA_VENC_MULTI
 	tristate "Amlogic Multi Encoder support"
-	default m
+	default n
 	help
 	  Internal Multi Encoder driver.
 
 config AMLOGIC_MEDIA_VENC_JPEG
 	tristate "Amlogic JPEG Encoder support"
-	default m
+	default n
 	help
 	  Internal Jpeg Encoder driver.
 
 config AMLOGIC_MEDIA_VENC_MEMALLOC
 	tristate "Amlogic VENC MEMALLOC"
-	default m
+	default n
 	help
 	  Driver for venc memalloc.
 
 config AMLOGIC_MEDIA_VENC_COMMON
 	tristate "Amlogic VENC VCENC COMMON"
-	default m
+	default n
 	help
 	  Driver for venc vcenc.
 
@@ -190,6 +190,7 @@ config AMLOGIC_MEDIA_VENC_COMMON
 
 config AMLOGIC_MEDIA_V4L_DEC
 	tristate "Amlogic V4L Video decoder"
+	select VIDEOBUF2_DMA_SG
 	default m
 	help
 	  Driver for v4l video decoder.

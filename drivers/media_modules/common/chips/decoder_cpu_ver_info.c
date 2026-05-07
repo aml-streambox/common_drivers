@@ -23,6 +23,7 @@
 #include <linux/types.h>
 #include <linux/errno.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/amlogic/media/registers/cpu_version.h>
 #include "decoder_cpu_ver_info.h"
@@ -1139,4 +1140,3 @@ EXPORT_SYMBOL(dos_info_debug);
 
 
 module_param(force_dos_support, uint, 0664);
-

@@ -52,7 +52,7 @@ int __weak tee_load_video_fw(u32 index, u32 vdec)
 	return -1;
 }
 
-int __weak tee_check_in_mem(u32 pa, u32 size)
+int __weak tee_check_in_mem(phys_addr_t pa, size_t size)
 {
 	return -1;
 }

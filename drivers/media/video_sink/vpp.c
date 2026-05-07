@@ -1541,7 +1541,7 @@ static bool is_8k_in_1080p120hz_out(u32 width_in,
 }
 #endif
 
-#ifdef CONFIG_AMLOGIC_TXHD2_REMOVE
+#if 1
 bool get_uvm_open_nn(void)
 {
 	return 0;

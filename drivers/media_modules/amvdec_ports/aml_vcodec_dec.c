@@ -71,7 +71,7 @@
 #include <linux/meson_ion.h>
 #endif
 
-MODULE_IMPORT_NS(DMA_BUF);
+MODULE_IMPORT_NS("DMA_BUF");
 
 #define OUT_FMT_IDX		(0) //default h264
 #define CAP_FMT_IDX		(14) //capture nv21m
@@ -1317,7 +1317,7 @@ ssize_t aml_buffer_status(struct aml_vcodec_ctx *ctx, char *buf)
 	}
 	if (!ctx->enable_di_post) {
 		pbuf += sprintf(pbuf, "\n==== Show Buffer Status ======== \n");
-		for (i = 0; i < q->num_buffers; ++i) {
+		for (i = 0; i < vb2_get_num_buffers(q); ++i) {
 			vb = to_vb2_v4l2_buffer(q->bufs[i]);
 			aml_buff = container_of(vb, struct aml_v4l2_buf, vb);
 			aml_buf = aml_buff->aml_buf;
@@ -1781,7 +1781,6 @@ int aml_thread_start(struct aml_vcodec_ctx *ctx, aml_thread_func func,
 	enum aml_thread_type type, const char *thread_name)
 {
 	struct aml_vdec_thread *thread;
-	struct sched_param param = { .sched_priority = MAX_RT_PRIO - 1 };
 	int ret = 0;
 
 	thread = aml_media_mem_alloc(sizeof(*thread), GFP_KERNEL);
@@ -1799,7 +1798,7 @@ int aml_thread_start(struct aml_vcodec_ctx *ctx, aml_thread_func func,
 		thread->task = NULL;
 		goto err;
 	}
-	sched_setscheduler_nocheck(thread->task, SCHED_FIFO, &param);
+	sched_set_fifo(thread->task);
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_EXINFO,
 			"%s, policy is:%d priority is:%d\n",
@@ -2116,7 +2115,8 @@ static int aml_uvm_buf_delay_alloc(struct aml_vcodec_ctx *ctx,
 			}
 #endif
 		} else {  /* dma heap */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) && \
+	LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
 			char *name = CODECMM_HEAP_NAME;
 			struct dma_heap *heap;
 
@@ -4737,7 +4737,7 @@ static void vb2ops_vdec_stop_streaming(struct vb2_queue *q)
 		while ((vb2_v4l2 = v4l2_m2m_src_buf_remove(ctx->m2m_ctx)))
 			v4l2_buff_done(vb2_v4l2, VB2_BUF_STATE_ERROR);
 
-		for (i = 0; i < q->num_buffers; ++i) {
+		for (i = 0; i < vb2_get_num_buffers(q); ++i) {
 			vb2_v4l2 = to_vb2_v4l2_buffer(q->bufs[i]);
 			if (vb2_v4l2->vb2_buf.state == VB2_BUF_STATE_ACTIVE)
 				v4l2_buff_done(vb2_v4l2, VB2_BUF_STATE_ERROR);
@@ -4769,7 +4769,7 @@ static void vb2ops_vdec_stop_streaming(struct vb2_queue *q)
 		INIT_KFIFO(ctx->capture_buffer);
 		mutex_unlock(&ctx->capture_buffer_lock);
 
-		for (i = 0; i < q->num_buffers; ++i) {
+		for (i = 0; i < vb2_get_num_buffers(q); ++i) {
 			vb2_v4l2 = to_vb2_v4l2_buffer(q->bufs[i]);
 			buf = container_of(vb2_v4l2, struct aml_v4l2_buf, vb);
 			if (buf->aml_buf) {
@@ -5510,8 +5510,6 @@ static const struct vb2_ops aml_vdec_vb2_ops = {
 	.queue_setup	= vb2ops_vdec_queue_setup,
 	.buf_prepare	= vb2ops_vdec_buf_prepare,
 	.buf_queue	= vb2ops_vdec_buf_queue,
-	.wait_prepare	= vb2_ops_wait_prepare,
-	.wait_finish	= vb2_ops_wait_finish,
 	.buf_init	= vb2ops_vdec_buf_init,
 	.buf_cleanup	= vb2ops_vdec_buf_cleanup,
 	.buf_finish	= vb2ops_vdec_buf_finish,
@@ -5600,7 +5598,7 @@ int aml_vcodec_dec_queue_init(void *priv, struct vb2_queue *src_vq,
 	dst_vq->mem_ops		= &vb2_dma_contig_memops;
 	dst_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
 	dst_vq->lock		= &ctx->v4l_intf_lock;
-	dst_vq->min_buffers_needed = 1;
+	dst_vq->min_queued_buffers = 1;
 	ret = vb2_queue_init(dst_vq);
 	if (ret) {
 		vb2_queue_release(src_vq);
@@ -5610,4 +5608,3 @@ int aml_vcodec_dec_queue_init(void *priv, struct vb2_queue *src_vq,
 
 	return ret;
 }
-

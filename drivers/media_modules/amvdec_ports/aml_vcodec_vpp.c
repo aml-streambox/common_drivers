@@ -963,8 +963,6 @@ int aml_v4l2_vpp_get_buf_num(u32 mode)
 int aml_v4l2_vpp_reset(struct aml_v4l2_vpp *vpp)
 {
 	int i;
-	struct sched_param param =
-		{ .sched_priority = MAX_RT_PRIO - 1 };
 
 	if (vpp->running) {
 		vpp->running = false;
@@ -1011,7 +1009,7 @@ int aml_v4l2_vpp_reset(struct aml_v4l2_vpp *vpp)
 		return PTR_ERR(vpp->task);
 	}
 
-	sched_setscheduler_nocheck(vpp->task, SCHED_FIFO, &param);
+	sched_set_fifo(vpp->task);
 
 	v4l_dbg(vpp->ctx, V4L_DEBUG_CODEC_PROT, "vpp wrapper reset.\n");
 
@@ -1028,7 +1026,6 @@ int aml_v4l2_vpp_init(
 	struct di_init_parm init;
 	u32 buf_size;
 	int i, ret;
-	struct sched_param param = { .sched_priority = MAX_RT_PRIO - 1 };
 	struct aml_v4l2_vpp *vpp;
 	u32 work_mode = cfg->mode;
 
@@ -1197,7 +1194,7 @@ int aml_v4l2_vpp_init(
 		ret = PTR_ERR(vpp->task);
 		goto error9;
 	}
-	sched_setscheduler_nocheck(vpp->task, SCHED_FIFO, &param);
+	sched_set_fifo(vpp->task);
 
 	vpp->di_ibuf_num = di_get_input_buffer_num(vpp->di_handle);
 	vpp->di_obuf_num = di_get_output_buffer_num(vpp->di_handle);
@@ -1445,4 +1442,3 @@ struct task_ops_s *get_vpp_ops(void)
 	return &vpp_ops;
 }
 EXPORT_SYMBOL(get_vpp_ops);
-

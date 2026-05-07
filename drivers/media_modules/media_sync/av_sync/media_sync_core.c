@@ -73,7 +73,7 @@ static u64 last_pcr;
 # define PAGE_SIZE 4096
 #endif
 
-extern int demux_get_pcr(int demux_device_index, int index, u64 *pcr);
+extern int tsdemux_get_pcr(int demux_device_index, int index, u64 *pcr);
 
 extern int register_mediasync_vpts_set_cb(void* pfunc);
 extern int register_mediasync_apts_set_cb(void* pfunc);
@@ -233,7 +233,7 @@ static u64 get_stc_time_us(mediasync_ins* pInstance)
 		return timeus;
 	}
 
-	ret = demux_get_pcr(pInstance->mDemuxId, 0, &pcr);
+	ret = tsdemux_get_pcr(pInstance->mDemuxId, 0, &pcr);
 
 	if (ret != 0) {
 		stc = timeus;
@@ -1737,7 +1737,7 @@ long mediasync_ins_get_firstdmxpcrinfo(MediaSyncManager* pSyncManage,mediasync_f
 
 	if (pInstance->mSyncInfo.firstDmxPcrInfo.framePts == -1) {
 		if (pInstance->mDemuxId >= 0) {
-			demux_get_pcr(pInstance->mDemuxId, 0, &pcr);
+			tsdemux_get_pcr(pInstance->mDemuxId, 0, &pcr);
 			pInstance->mSyncInfo.firstDmxPcrInfo.framePts = pcr;
 			pInstance->mSyncInfo.firstDmxPcrInfo.frameSystemTime = get_system_time_us();
 			mediasync_pr_info(2,pInstance,"pcr:%lld frameSystemTime:%lld\n",
@@ -1949,7 +1949,7 @@ long mediasync_ins_get_curdmxpcrinfo(MediaSyncManager* pSyncManage, mediasync_fr
 	}
 
 	if (pInstance->mDemuxId >= 0) {
-		demux_get_pcr(pInstance->mDemuxId, 0, &pcr);
+		tsdemux_get_pcr(pInstance->mDemuxId, 0, &pcr);
 		pInstance->mSyncInfo.curDmxPcrInfo.framePts = pcr;
 		pInstance->mSyncInfo.curDmxPcrInfo.frameSystemTime = get_system_time_us();
 		mediasync_pr_info(2,pInstance,"pcr:%llx frameSystemTime:%llx\n",
@@ -3497,7 +3497,7 @@ void mediasync_ins_check_pcr_slope(mediasync_ins* pInstance, mediasync_update_in
 		CurTimeUs = get_system_time_us();
 		pInstance->mLastCheckSlopeSystemtime = CurTimeUs;
 		if (pInstance->mDemuxId >= 0) {
-			demux_get_pcr(pInstance->mDemuxId, 0, &pcr);
+			tsdemux_get_pcr(pInstance->mDemuxId, 0, &pcr);
 			pcr_ns = div_u64(pcr * 100000 , 9);
 		}
 		pInstance->mLastCheckSlopeDemuxPts = pcr_ns;
@@ -3510,7 +3510,7 @@ void mediasync_ins_check_pcr_slope(mediasync_ins* pInstance, mediasync_update_in
 
 	if (time_diff >= 500000) {
 		if (pInstance->mDemuxId >= 0) {
-			demux_get_pcr(pInstance->mDemuxId, 0, &pcr);
+			tsdemux_get_pcr(pInstance->mDemuxId, 0, &pcr);
 			mCurPcr = mediasync_ins_get_stc_time_implementation(pInstance,CurTimeUs);
 		}
 		pcr_ns = div_u64(pcr * 100000 , 9);
@@ -4083,4 +4083,3 @@ MODULE_PARM_DESC(media_sync_calculate_cache_enable, "\n mediasync calculate cach
 
 module_param(media_sync_start_slow_sync_enable, uint, 0664);
 MODULE_PARM_DESC(media_sync_start_slow_sync_enable, "\n media sync policy  slow sync enable\n");
-

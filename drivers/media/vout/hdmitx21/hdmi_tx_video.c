@@ -43,7 +43,11 @@ static void construct_avi_packet(struct hdmitx_dev *hdev)
 	info->active_aspect = HDMI_ACTIVE_ASPECT_PICTURE;
 	info->itc = 0;
 	info->extended_colorimetry = HDMI_EXTENDED_COLORIMETRY_XV_YCC_601;
-	info->quantization_range = HDMI_QUANTIZATION_RANGE_LIMITED;
+	if (para->cs == HDMI_COLORSPACE_RGB &&
+	    para->cr != HDMI_QUANTIZATION_RANGE_RESERVED)
+		info->quantization_range = para->cr;
+	else
+		info->quantization_range = HDMI_QUANTIZATION_RANGE_LIMITED;
 	info->nups = HDMI_NUPS_UNKNOWN;
 	info->video_code = para->timing.vic;
 	if (para->timing.vic == HDMI_95_3840x2160p30_16x9 ||

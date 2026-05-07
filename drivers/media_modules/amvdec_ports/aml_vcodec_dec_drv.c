@@ -92,7 +92,7 @@ static int fops_vcodec_open(struct file *file)
 	ctx->id = dev->id_counter++;
 	v4l2_fh_init(&ctx->fh, video_devdata(file));
 	file->private_data = &ctx->fh;
-	v4l2_fh_add(&ctx->fh);
+	v4l2_fh_add(&ctx->fh, file);
 	INIT_LIST_HEAD(&ctx->list);
 	INIT_LIST_HEAD(&ctx->vdec_thread_list);
 	INIT_LIST_HEAD(&ctx->task_chain_pool);
@@ -201,7 +201,7 @@ err_buffer_manager:
 err_m2m_ctx_init:
 	v4l2_ctrl_handler_free(&ctx->ctrl_hdl);
 err_ctrls_setup:
-	v4l2_fh_del(&ctx->fh);
+	v4l2_fh_del(&ctx->fh, file);
 	v4l2_fh_exit(&ctx->fh);
 	vfree(ctx->meta_infos.meta_bufs);
 	aml_media_mem_free(ctx->empty_flush_buf);
@@ -225,7 +225,7 @@ static int fops_vcodec_release(struct file *file)
 
 	aml_vcodec_dec_info_deinit(ctx);
 	aml_vcodec_dec_release(ctx);
-	v4l2_fh_del(&ctx->fh);
+	v4l2_fh_del(&ctx->fh, file);
 	v4l2_fh_exit(&ctx->fh);
 	v4l2_ctrl_handler_free(&ctx->ctrl_hdl);
 
@@ -890,4 +890,3 @@ module_param(enable_di_post, int, 0644);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("AML video codec V4L2 decoder driver");
-

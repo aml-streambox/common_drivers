@@ -711,7 +711,6 @@ int aml_v4l2_ge2d_init(
 		struct aml_ge2d_cfg_infos *cfg,
 		struct aml_v4l2_ge2d** ge2d_handle)
 {
-	struct sched_param param = { .sched_priority = MAX_RT_PRIO - 1 };
 	struct aml_v4l2_ge2d *ge2d;
 	u32 buf_size;
 	int i, ret;
@@ -831,7 +830,7 @@ int aml_v4l2_ge2d_init(
 		ret = PTR_ERR(ge2d->task);
 		goto error9;
 	}
-	sched_setscheduler_nocheck(ge2d->task, SCHED_FIFO, &param);
+	sched_set_fifo(ge2d->task);
 
 	*ge2d_handle = ge2d;
 
@@ -1027,4 +1026,3 @@ struct task_ops_s *get_ge2d_ops(void)
 	return &ge2d_ops;
 }
 EXPORT_SYMBOL(get_ge2d_ops);
-

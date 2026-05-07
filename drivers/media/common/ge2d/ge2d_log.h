@@ -6,7 +6,7 @@
 #ifndef _GE2D_LOG_H_
 #define _GE2D_LOG_H_
 
-#include <stdarg.h>
+#include <linux/stdarg.h>
 #include <linux/printk.h>
 
 #define GE2D_LOG_TAG "[GE2D]"

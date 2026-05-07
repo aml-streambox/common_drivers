@@ -4626,13 +4626,12 @@ static void vdec_set_last_vdec(struct vdec_s *vdec, int format)
 static int vdec_core_thread(void *data)
 {
 	struct vdec_core_s *core = (struct vdec_core_s *)data;
-	struct sched_param param = {.sched_priority = MAX_RT_PRIO/2};
 	unsigned long flags;
 	int i;
 	u64 thread_start_timestamp = 0;
 	u64 run_start_timestamp = 0;
 
-	sched_setscheduler(current, SCHED_FIFO, &param);
+	sched_set_fifo(current);
 
 	allow_signal(SIGTERM);
 

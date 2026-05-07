@@ -1041,7 +1041,8 @@ static void meson_crtc_init_property(struct drm_device *drm_dev,
 	prop = drm_property_create_bool(drm_dev, 0, "meson.crtc.hdr_policy");
 	if (prop) {
 		amcrtc->hdr_policy = prop;
-		drm_object_attach_property(&amcrtc->base.base, prop, 0);
+		drm_object_attach_property(&amcrtc->base.base, prop,
+			MESON_HDR_POLICY_FOLLOW_SOURCE);
 	} else {
 		DRM_ERROR("Failed to UPDATE property\n");
 	}

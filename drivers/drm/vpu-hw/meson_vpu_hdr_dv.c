@@ -5,6 +5,38 @@
 
 #include "meson_vpu_pipeline.h"
 
+#define T7_OSD_HDR2_BYPASS_CTRL			(BIT(16) | BIT(15) | BIT(14))
+#define T7_OSD1_HDR2_CTRL			0x38a0
+#define T7_OSD1_HDR2_MATRIXI_COEF00_01		0x38a2
+#define T7_OSD1_HDR2_MATRIXI_EN_CTRL		0x38db
+#define T7_OSD1_HDR2_MATRIXO_EN_CTRL		0x38dc
+#define T7_OSD3_HDR2_CTRL			0x5b50
+#define T7_OSD3_HDR2_MATRIXI_COEF00_01		0x5b52
+#define T7_OSD3_HDR2_MATRIXI_EN_CTRL		0x5b8b
+#define T7_OSD3_HDR2_MATRIXO_EN_CTRL		0x5b8c
+
+static void t7_osd_hdr_bypass(struct rdma_reg_ops *reg_ops, u32 hdr_ctrl,
+				      u32 matrixi_base, u32 matrixi_en_ctrl,
+				      u32 matrixo_en_ctrl)
+{
+	reg_ops->rdma_write_reg(matrixi_base + 0x0, 0x00ba0273);
+	reg_ops->rdma_write_reg(matrixi_base + 0x1, 0x003f1f9a);
+	reg_ops->rdma_write_reg(matrixi_base + 0x2, 0x1ea801c0);
+	reg_ops->rdma_write_reg(matrixi_base + 0x3, 0x01c01e6a);
+	reg_ops->rdma_write_reg(matrixi_base + 0x4, 0x00001fd8);
+	reg_ops->rdma_write_reg(matrixi_base + 0x5, 0x0);
+	reg_ops->rdma_write_reg(matrixi_base + 0x6, 0x0);
+	reg_ops->rdma_write_reg(matrixi_base + 0x7, 0x0);
+	reg_ops->rdma_write_reg(matrixi_base + 0x8, 0x00400200);
+	reg_ops->rdma_write_reg(matrixi_base + 0x9, 0x00000200);
+	reg_ops->rdma_write_reg(matrixi_base + 0xa, 0x0);
+	reg_ops->rdma_write_reg(matrixi_base + 0xb, 0x0);
+	reg_ops->rdma_write_reg(matrixi_base + 0x18, 0x0);
+	reg_ops->rdma_write_reg(matrixi_en_ctrl, 0x1);
+	reg_ops->rdma_write_reg(matrixo_en_ctrl, 0x0);
+	reg_ops->rdma_write_reg(hdr_ctrl, T7_OSD_HDR2_BYPASS_CTRL);
+}
+
 static struct hdr_reg_s osd_hdr_reg[MESON_MAX_HDRS] = {
 	{
 		VPP_OSD1_IN_SIZE,
@@ -83,12 +115,21 @@ static void t7_hdr_set_state(struct meson_vpu_block *vblk,
 
 	mvps = priv_to_pipeline_state(pipeline->obj.state);
 
-	if (vblk->index == HDR2_INDEX) {
+	if (vblk->index == HDR1_INDEX) {
+		t7_osd_hdr_bypass(reg_ops, T7_OSD1_HDR2_CTRL,
+			T7_OSD1_HDR2_MATRIXI_COEF00_01,
+			T7_OSD1_HDR2_MATRIXI_EN_CTRL,
+			T7_OSD1_HDR2_MATRIXO_EN_CTRL);
+	} else if (vblk->index == HDR2_INDEX) {
 		hsize = mvps->scaler_param[MESON_OSD3].output_width;
 		vsize = mvps->scaler_param[MESON_OSD3].output_height;
 
 		MESON_DRM_BLOCK("%s set_state,input size:%u,%u.\n", hdr->base.name, hsize, vsize);
 		reg_ops->rdma_write_reg(reg->vpp_osd_in_size, hsize | (vsize << 16));
+		t7_osd_hdr_bypass(reg_ops, T7_OSD3_HDR2_CTRL,
+			T7_OSD3_HDR2_MATRIXI_COEF00_01,
+			T7_OSD3_HDR2_MATRIXI_EN_CTRL,
+			T7_OSD3_HDR2_MATRIXO_EN_CTRL);
 	}
 	MESON_DRM_BLOCK("%s set_state called.\n", hdr->base.name);
 }
