@@ -405,9 +405,15 @@ static const struct hdmi_timing vesa_modes[] = {
 		1600, 160, 48, 32, 80, 1440, 1495, 55, 10, 10, 35, 1440, 1, 1, 0, 1, 1, 1, 1},
 	{HDMIV_29_2880x1440p60hz, "2880x1440p60hz", NULL, 1, 89701, 60000, 272690,
 		3040, 160, 48, 32, 80, 2880, 1495, 55, 10, 10, 35, 1440, 1, 1, 0, 1, 1, 2, 1},
+	{HDMIV_30_2560x1440p120hz, "2560x1440p120hzV", "2560x1440p120hz", 1, 183011, 119991, 497750,
+		2720, 160, 48, 32, 80, 2560, 1525, 85, 3, 5, 77, 1440, 1, 1, 1, 16, 9},
+	{HDMIV_31_2560x1440p144hz, "2560x1440p144hzV", "2560x1440p144hz", 1, 209942, 143993, 571040,
+		2720, 160, 48, 32, 80, 2560, 1458, 18, 3, 5, 10, 1440, 1, 1, 1, 16, 9},
+	{HDMIV_32_1920x1080p144hz, "1920x1080p144hzV", "1080p144hz", 1, 161971, 143920, 356340,
+		2200, 280, 88, 44, 148, 1920, 1125, 45, 4, 5, 36, 1080, 1, 1, 1, 16, 9},
+	{HDMIV_33_1920x1080p240hz, "1920x1080p240hzV", "1080p240hz", 1, 270000, 240000, 594000,
+		2200, 280, 88, 44, 148, 1920, 1125, 45, 4, 5, 36, 1080, 1, 1, 1, 16, 9},
 };
-
-#define VESA_TIMING_END HDMIV_29_2880x1440p60hz
 
 /*return NULL for invalid hdmi_timing.*/
 const struct hdmi_timing *hdmitx_mode_index_to_hdmi_timing(u32 idx)
@@ -532,6 +538,40 @@ const struct hdmi_timing *hdmitx_mode_match_vesa_timing(struct vesa_standard_tim
 	}
 
 	return INVALID_HDMI_TIMING;
+}
+
+const struct hdmi_timing *hdmitx_mode_match_vesa_timing_relaxed(struct dtd *t)
+{
+	int i;
+	const struct hdmi_timing *timing;
+	u32 dtd_htotal, dtd_vtotal, dtd_vrefresh, tbl_vrefresh;
+
+	if (!t)
+		return NULL;
+
+	dtd_htotal = t->h_active + t->h_blank;
+	dtd_vtotal = t->v_active + t->v_blank;
+	if (dtd_htotal == 0 || dtd_vtotal == 0)
+		return NULL;
+
+	dtd_vrefresh = DIV_ROUND_CLOSEST_ULL(
+		mul_u32_u32((u32)t->pixel_clock, 10000),
+		dtd_htotal * dtd_vtotal);
+
+	for (i = 0; i < ARRAY_SIZE(vesa_modes); i++) {
+		timing = &vesa_modes[i];
+		if (timing->vic == HDMI_0_UNKNOWN)
+			continue;
+
+		if (t->h_active == timing->h_active &&
+		    t->v_active == timing->v_active) {
+			tbl_vrefresh = hdmi_timing_vrefresh(timing);
+			if (abs((int)dtd_vrefresh - (int)tbl_vrefresh) <= 3)
+				return timing;
+		}
+	}
+
+	return NULL;
 }
 
 /*!!!!Internal use!!!!
@@ -737,4 +777,3 @@ void hdmitx_mode_print_all_mode_table(void)
 
 	HDMITX_INFO("-----------------%s end --------------\n", __func__);
 }
-

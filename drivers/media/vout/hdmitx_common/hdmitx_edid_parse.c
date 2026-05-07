@@ -449,16 +449,18 @@ static void edid_parsing_id_serial_number(struct rx_cap *prxcap,
 static void store_vesa_idx(struct rx_cap *prxcap, enum hdmi_vic vesa_timing)
 {
 	int i;
-	int already = 0;
 
-	for (i = 0; i < VESA_MAX_TIMING && prxcap->vesa_timing[i]; i++) {
-		if (prxcap->vesa_timing[i] == vesa_timing) {
-			already = 1;
+	if (!prxcap)
+		return;
+
+	for (i = 0; i < VESA_MAX_TIMING; i++) {
+		if (!prxcap->vesa_timing[i]) {
+			prxcap->vesa_timing[i] = vesa_timing;
 			break;
 		}
-	}
-	if (!already && i != VESA_MAX_TIMING) {
-		prxcap->vesa_timing[i] = vesa_timing;
+
+		if (prxcap->vesa_timing[i] == vesa_timing)
+			break;
 	}
 }
 
@@ -2255,7 +2257,18 @@ next:
 		else
 			store_vesa_idx(prxcap, t->vic);
 	} else {
-		dump_dtd_info(t);
+		/* Match VESA DTDs even when sink blanking differs from our table. */
+		timing = hdmitx_mode_match_vesa_timing_relaxed(t);
+		if (timing && timing->vic != HDMI_0_UNKNOWN) {
+			t->vic = timing->vic;
+			prxcap->preferred_mode = prxcap->dtd[0].vic;
+			pr_debug(EDID "get dtd%d vic: %d (relaxed match)\n",
+				prxcap->dtd_idx, t->vic);
+			prxcap->dtd_idx++;
+			store_vesa_idx(prxcap, t->vic);
+		} else {
+			dump_dtd_info(t);
+		}
 	}
 }
 
@@ -2568,8 +2581,7 @@ static void _edid_parse_base_structure(struct rx_cap *prxcap, unsigned char *EDI
 			prxcap->ieeeoui = HDMI_IEEE_OUI;
 		if (zero_numbers > 120)
 			prxcap->ieeeoui = HDMI_IEEE_OUI;
-		if (prxcap->ieeeoui == HDMI_IEEE_OUI)
-			hdmitx_edid_set_default_vic(prxcap);
+		hdmitx_edid_set_default_vic(prxcap);
 	}
 }
 
@@ -2763,7 +2775,7 @@ int hdmitx_edid_parse(struct rx_cap *prxcap, u8 *edid_buf)
 	}
 
 	/* if edid are all zeroes, or no VIC, set default vic */
-	if (edid_zero_data(edid_buf) || (prxcap->VIC_count == 0 && prxcap->ieeeoui == HDMI_IEEE_OUI))
+	if (edid_zero_data(edid_buf) || prxcap->VIC_count == 0)
 		hdmitx_edid_set_default_vic(prxcap);
 
 	if (prxcap->ieeeoui != HDMI_IEEE_OUI)
@@ -3079,4 +3091,3 @@ int hdmitx_edid_print_sink_cap(const struct rx_cap *prxcap,
 
 	return pos;
 }
-

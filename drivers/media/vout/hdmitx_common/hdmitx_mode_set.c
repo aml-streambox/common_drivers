@@ -38,6 +38,7 @@ void hdmi_physical_size_to_vinfo(struct hdmitx_common *tx_comm)
 	}
 }
 
+
 void set_dummy_dv_info(struct vout_device_s *vdev)
 {
 	vdev->dv_info = &dv_dummy;
@@ -790,4 +791,3 @@ void hdmitx_common_late_resume(struct hdmitx_common *tx_comm)
 	hdmitx_event_mgr_send_uevent(tx_comm->event_mgr,
 		HDMITX_HDCPPWR_EVENT, HDMI_WAKEUP, false);
 }
-
