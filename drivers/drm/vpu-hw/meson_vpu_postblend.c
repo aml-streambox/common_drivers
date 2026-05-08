@@ -189,6 +189,18 @@ static void vpp_osd1_blend_scope_set(struct meson_vpu_block *vblk,
 				(scope.v_start << 16) | scope.v_end);
 }
 
+static void t7_vpp_out_size_set(struct rdma_reg_ops *reg_ops,
+					struct osd_scope_s scope)
+{
+	u32 hsize = scope.h_end - scope.h_start + 1;
+	u32 vsize = scope.v_end - scope.v_start + 1;
+	u32 hv_size = (hsize << 16) | vsize;
+
+	reg_ops->rdma_write_reg(VPP_POSTBLEND_H_SIZE, hsize);
+	reg_ops->rdma_write_reg(VPP_VE_H_V_SIZE, hv_size);
+	reg_ops->rdma_write_reg(VPP_PSR_H_V_SIZE, hv_size);
+}
+
 #ifndef CONFIG_AMLOGIC_ZAPPER_CUT
 /*vpp osd2 blend scope set*/
 static void vpp_osd2_blend_scope_set(struct meson_vpu_block *vblk,
@@ -500,6 +512,7 @@ static void t7_postblend_set_state(struct meson_vpu_block *vblk,
 
 	if (crtc_index == 0) {
 		vpp_osd1_blend_scope_set(vblk, reg_ops, reg, scope);
+		t7_vpp_out_size_set(reg_ops, scope);
 
 		if (amc->blank_enable) {
 			vpp_osd1_postblend_mux_set(vblk, reg_ops,

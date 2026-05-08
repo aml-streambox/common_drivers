@@ -6,6 +6,7 @@
 #include "meson_vpu_pipeline.h"
 
 #define T7_OSD_HDR2_BYPASS_CTRL			(BIT(16) | BIT(15) | BIT(14))
+#define T7_OSD1_HDR_IN_SIZE			0x1a5a
 #define T7_OSD1_HDR2_CTRL			0x38a0
 #define T7_OSD1_HDR2_MATRIXI_COEF00_01		0x38a2
 #define T7_OSD1_HDR2_MATRIXI_EN_CTRL		0x38db
@@ -116,6 +117,15 @@ static void t7_hdr_set_state(struct meson_vpu_block *vblk,
 	mvps = priv_to_pipeline_state(pipeline->obj.state);
 
 	if (vblk->index == HDR1_INDEX) {
+		hsize = mvps->scaler_param[MESON_OSD1].output_width;
+		vsize = mvps->scaler_param[MESON_OSD1].output_height;
+
+		MESON_DRM_BLOCK("%s set_state,input size:%u,%u.\n",
+				hdr->base.name, hsize, vsize);
+		reg_ops->rdma_write_reg(reg->vpp_osd_in_size,
+			hsize | (vsize << 16));
+		reg_ops->rdma_write_reg(T7_OSD1_HDR_IN_SIZE,
+			hsize | (vsize << 16));
 		t7_osd_hdr_bypass(reg_ops, T7_OSD1_HDR2_CTRL,
 			T7_OSD1_HDR2_MATRIXI_COEF00_01,
 			T7_OSD1_HDR2_MATRIXI_EN_CTRL,

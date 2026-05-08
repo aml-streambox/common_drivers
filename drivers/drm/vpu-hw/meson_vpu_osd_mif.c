@@ -887,6 +887,22 @@ void osd_input_size_config(struct meson_vpu_block *vblk,
 		scope.v_start/*y_start pixels[13bits]*/);
 }
 
+static void osd_display_size_config(struct meson_vpu_block *vblk,
+					    struct rdma_reg_ops *reg_ops,
+					    struct osd_mif_reg_s *reg,
+					    struct osd_scope_s scope, bool interlace)
+{
+	reg_ops->rdma_write_reg(reg->viu_osd_blk0_cfg_w3,
+			(scope.h_end << 16) | scope.h_start);
+	if (interlace)
+		reg_ops->rdma_write_reg(reg->viu_osd_blk0_cfg_w4,
+				(((scope.v_end + 1) >> 1) - 1) << 16 |
+				(scope.v_start >> 1));
+	else
+		reg_ops->rdma_write_reg(reg->viu_osd_blk0_cfg_w4,
+				(scope.v_end << 16) | scope.v_start);
+}
+
 /*osd canvas config*/
 void osd_canvas_config(struct meson_vpu_block *vblk,
 		       struct rdma_reg_ops *reg_ops,
@@ -1442,7 +1458,9 @@ static void osd_set_state(struct meson_vpu_block *vblk,
 	int crtc_index;
 	u32 pixel_format, canvas_index, src_h, byte_stride, flush_reg, hold_line;
 	struct osd_scope_s scope_src = {0, 1919, 0, 1079};
+	struct osd_scope_s scope_dst = {0, 1919, 0, 1079};
 	struct osd_mif_reg_s *reg;
+	u32 dst_w, dst_h;
 	bool alpha_div_en = 0, reverse_x, reverse_y, afbc_en;
 	enum osd_process_unit process_unit;
 	u64 phy_addr;
@@ -1540,6 +1558,16 @@ static void osd_set_state(struct meson_vpu_block *vblk,
 			scope_src.h_start = scope_src.h_end -
 				mvps->scaler_param[vblk->index].input_width + 1;
 	}
+	dst_w = mvps->scaler_param[vblk->index].output_width;
+	dst_h = mvps->scaler_param[vblk->index].output_height;
+	if (!dst_w)
+		dst_w = mvos->dst_w;
+	if (!dst_h)
+		dst_h = mvos->dst_h;
+	scope_dst.h_start = mvos->dst_x;
+	scope_dst.h_end = mvos->dst_x + dst_w - 1;
+	scope_dst.v_start = mvos->dst_y;
+	scope_dst.v_end = mvos->dst_y + dst_h - 1;
 
 	reverse_x = (mvos->rotation & DRM_MODE_REFLECT_X) ? 1 : 0;
 	reverse_y = (mvos->rotation & DRM_MODE_REFLECT_Y) ? 1 : 0;
@@ -1563,6 +1591,8 @@ static void osd_set_state(struct meson_vpu_block *vblk,
 
 	osd_rpt_y_config(vblk, reg_ops, reg);
 	osd_input_size_config(vblk, reg_ops, reg, scope_src);
+	osd_display_size_config(vblk, reg_ops, reg, scope_dst,
+		pipe->subs[crtc_index].mode.flags & DRM_MODE_FLAG_INTERLACE);
 	osd_color_config(vblk, reg_ops, reg, pixel_format, mvos->pixel_blend, afbc_en);
 
 	if (osd->mif_acc_mode == LINEAR_MIF) {
