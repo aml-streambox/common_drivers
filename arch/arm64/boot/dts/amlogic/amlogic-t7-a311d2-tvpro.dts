@@ -87,6 +87,14 @@
 			clear-map;
 		};
 
+		ge2d_cma_reserved: linux,ge2d_cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			status = "okay";
+			size = <0x0 0x1800000>;
+			alignment = <0x0 0x00400000>;
+		};
+
 		codec_mm_reserved: linux,codec_mm_reserved {
 			compatible = "amlogic, codec-mm-reserved";
 			size = <0x0 0x0>;
@@ -798,6 +806,10 @@
 			    0x0000a008>;
 		vdin_function_sel = <0x400>;
 	};
+};
+
+&ge2d {
+	memory-region = <&ge2d_cma_reserved>;
 };
 
 &apb4 {

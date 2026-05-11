@@ -28,7 +28,7 @@
 
 static u32 vdec_ge2d_debug = 0;
 
-#ifndef  CONFIG_AMLOGIC_MEDIA_GE2D
+#if !IS_ENABLED(CONFIG_AMLOGIC_MEDIA_GE2D)
 inline struct ge2d_context_s *create_ge2d_work_queue(void) { return NULL; }
 inline int destroy_ge2d_work_queue(struct ge2d_context_s *ge2d_work_queue) { return -1; }
 #endif

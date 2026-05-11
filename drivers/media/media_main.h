@@ -262,7 +262,7 @@ static inline int vfm_class_init(void)
 }
 #endif
 
-#ifdef CONFIG_AMLOGIC_MEDIA_GE2D
+#if IS_ENABLED(CONFIG_AMLOGIC_MEDIA_GE2D)
 int ge2d_init_module(void);
 #else
 static inline int ge2d_init_module(void)

@@ -60,7 +60,7 @@ enum videocom_source_type {
 	DECODER_10BIT_TOP
 };
 
-#ifndef  CONFIG_AMLOGIC_MEDIA_GE2D
+#if !IS_ENABLED(CONFIG_AMLOGIC_MEDIA_GE2D)
 inline void stretchblt_noalpha(struct ge2d_context_s *wq,
 		int src_x, int src_y, int src_w, int src_h,
 		int dst_x, int dst_y, int dst_w, int dst_h) { return; }
