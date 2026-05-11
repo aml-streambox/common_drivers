@@ -608,11 +608,17 @@ static int t7_display_register_vapb(struct device *dev,
 	if (ret)
 		return ret;
 
-	return t7_display_add_mux_parent_names(dev, clkc,
+	ret = t7_display_add_mux_parent_names(dev, clkc,
 		CLKID_T7_DISPLAY_VAPB, "t7_display_vapb",
 		t7_vapb_mux_parent_names, ARRAY_SIZE(t7_vapb_mux_parent_names),
 		T7_DCLK_VAPBCLK_CTRL, 31, 1,
 		CLK_SET_RATE_NO_REPARENT | CLK_SET_RATE_PARENT);
+	if (ret)
+		return ret;
+
+	return t7_display_add_gate(dev, clkc, CLKID_T7_DISPLAY_GE2D,
+		"t7_display_ge2d", T7_HW(VAPB), T7_DCLK_VAPBCLK_CTRL,
+		30, CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED);
 }
 
 static int t7_display_register_hdmitx(struct device *dev,
