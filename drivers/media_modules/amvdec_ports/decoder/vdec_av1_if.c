@@ -256,7 +256,7 @@ static u32 vdec_config_default_parms(u8 *parm)
 	pbuf += sprintf(pbuf, "parm_v4l_canvas_mem_mode:0;");
 	pbuf += sprintf(pbuf, "parm_v4l_canvas_mem_endian:0;");
 
-	return parm - pbuf;
+	return pbuf - parm;
 }
 
 static void vdec_parser_parms(struct vdec_av1_inst *inst)
@@ -1386,4 +1386,3 @@ struct vdec_common_if *get_av1_dec_comm_if(void)
 {
 	return &vdec_av1_if;
 }
-

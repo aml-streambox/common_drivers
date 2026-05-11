@@ -4390,7 +4390,7 @@ error2:
 	return r;
 }
 
-static int amstream_remove(struct platform_device *pdev)
+static void amstream_remove(struct platform_device *pdev)
 {
 	int i;
 	struct stream_port_s *st;
@@ -4414,7 +4414,6 @@ static int amstream_remove(struct platform_device *pdev)
 
 	pr_err("Amlogic A/V streaming port release\n");
 
-	return 0;
 }
 
 void set_adec_func(int (*adec_func)(struct adec_status *))

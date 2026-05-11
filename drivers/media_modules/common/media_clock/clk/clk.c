@@ -46,6 +46,11 @@
 
 static int clock_source_wxhxfps_saved[VDEC_MAX + 1];
 
+bool tvpro_vdec_clk_checkpoint(int step, const char *name, int value)
+{
+	return false;
+}
+
 #define IF_HAVE_RUN(p, fn)\
 	do {\
 		if (p && p->fn)\
@@ -88,11 +93,21 @@ EXPORT_SYMBOL(vdec_clock_init);
  */
 int vdec_clock_set(int clk)
 {
+	int ret;
+
 	pr_debug("%s-----%d\n", __func__, clk);
-	if (p_vdec() && p_vdec()->clock_set)
-		return p_vdec()->clock_set(clk);
-	else
-		return -1;
+	if (tvpro_vdec_clk_checkpoint(700, "vdec_clock_set enter", clk))
+		return -EAGAIN;
+	if (p_vdec() && p_vdec()->clock_set) {
+		if (tvpro_vdec_clk_checkpoint(701,
+			    "before chip clock_set", clk))
+			return -EAGAIN;
+		ret = p_vdec()->clock_set(clk);
+		tvpro_vdec_clk_checkpoint(702, "after chip clock_set", ret);
+		return ret;
+	}
+
+	return -1;
 }
 EXPORT_SYMBOL(vdec_clock_set);
 
@@ -104,7 +119,11 @@ EXPORT_SYMBOL(vdec_clock_enable);
 
 void vdec_clock_hi_enable(void)
 {
+	if (tvpro_vdec_clk_checkpoint(710,
+		    "before vdec_clock_set high", 2))
+		return;
 	vdec_clock_set(2);
+	tvpro_vdec_clk_checkpoint(711, "after vdec_clock_set high", 2);
 }
 EXPORT_SYMBOL(vdec_clock_hi_enable);
 
@@ -459,4 +478,3 @@ int unregister_vdec_clk_setting(void)
 	return 0;
 }
 EXPORT_SYMBOL(unregister_vdec_clk_setting);
-

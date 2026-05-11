@@ -45,6 +45,11 @@
 extern int no_powerdown;
 extern int hevc_max_reset_count;
 
+static bool tvpro_vdec_pm_checkpoint(int step, const char *name, int id)
+{
+	return false;
+}
+
 struct pm_name_s {
 	int type;
 	const char *name;
@@ -85,15 +90,25 @@ static void pm_vdec_power_switch(struct pm_pd_s *pd, int id, bool on)
 {
 	struct device *dev = pd[id].dev;
 
+	if (tvpro_vdec_pm_checkpoint(620, "power_switch enter", id))
+		return;
 	if (dev == NULL) {
 		pr_debug("no dev %d, maybe always on\n", id);
 		return;
 	}
 
+	if (tvpro_vdec_pm_checkpoint(621,
+		    on ? "before pm_runtime_get_sync" : "before pm_runtime_put_sync",
+		    id))
+		return;
 	if (on)
 		pm_runtime_get_sync(dev);
 	else
 		pm_runtime_put_sync(dev);
+	if (tvpro_vdec_pm_checkpoint(622,
+		    on ? "after pm_runtime_get_sync" : "after pm_runtime_put_sync",
+		    id))
+		return;
 
 	if (vdec_get_debug() & VDEC_DBG_DETAIL_INFO)
 		pr_debug("the %-15s power %s\n",
@@ -152,15 +167,44 @@ static void pm_vdec_clock_on(int id)
 {
 	int ret = 0;
 
+	if (tvpro_vdec_pm_checkpoint(600, "clock_on enter", id))
+		return;
 	if (id == VDEC_1) {
+		if (tvpro_vdec_pm_checkpoint(601,
+			    "before clk_vdec_mux gate", id))
+			return;
 		amports_switch_gate("clk_vdec_mux", 1);
+		if (tvpro_vdec_pm_checkpoint(602,
+			    "after clk_vdec_mux gate", id))
+			return;
+		if (tvpro_vdec_pm_checkpoint(603,
+			    "before vdec_clock_hi_enable", id))
+			return;
 		vdec_clock_hi_enable();
+		if (tvpro_vdec_pm_checkpoint(604,
+			    "after vdec_clock_hi_enable", id))
+			return;
 	} else if (id == VDEC_HCODEC) {
+		if (tvpro_vdec_pm_checkpoint(605,
+			    "before clk_hcodec_mux gate", id))
+			return;
 		amports_switch_gate("clk_hcodec_mux", 1);
+		if (tvpro_vdec_pm_checkpoint(606,
+			    "after clk_hcodec_mux gate", id))
+			return;
 		hcodec_clock_enable();
+		if (tvpro_vdec_pm_checkpoint(607,
+			    "after hcodec_clock_enable", id))
+			return;
 	} else if (id == VDEC_HEVC) {
 		/* enable hevc clock */
+		if (tvpro_vdec_pm_checkpoint(608,
+			    "before clk_hevcf_mux gate", id))
+			return;
 		ret = amports_switch_gate("clk_hevcf_mux", 1);
+		if (tvpro_vdec_pm_checkpoint(609,
+			    "after clk_hevcf_mux gate", id))
+			return;
 		if (ret == -ENODEV)
 			amports_switch_gate("clk_hevc_mux", 1);
 
@@ -269,17 +313,30 @@ static void pm_vdec_power_domain_power_on(struct device *dev, int id)
 {
 	const struct power_manager_s *pm = of_device_get_match_data(dev);
 
+	if (tvpro_vdec_pm_checkpoint(650, "pd power_on enter", id))
+		return;
 	if (get_cpu_major_id() == AM_MESON_CPU_MAJOR_ID_T5M)
 		pm_vdec_power_switch(pm->pd_data, VDEC_1, true);    //enable dos top PDID_T5M_DOS_GE2D_WRAP
 
+	if (tvpro_vdec_pm_checkpoint(652, "before clock_on", id))
+		return;
 	pm_vdec_clock_on(id);
+	if (tvpro_vdec_pm_checkpoint(653, "after clock_on", id))
+		return;
+	if (tvpro_vdec_pm_checkpoint(654, "before power_switch", id))
+		return;
 	pm_vdec_power_switch(pm->pd_data, id, true);
+	if (tvpro_vdec_pm_checkpoint(655, "after power_switch", id))
+		return;
 
 	if ((id == VDEC_HEVC) && is_support_dual_core()) {
 		pm_vdec_power_switch(pm->pd_data, VDEC_HEVCB, true);
 	}
 
+	if (tvpro_vdec_pm_checkpoint(656, "before dos_local_config", id))
+		return;
 	dos_local_config(1, id);
+	tvpro_vdec_pm_checkpoint(657, "after dos_local_config", id);
 }
 
 static void pm_vdec_power_domain_power_off(struct device *dev, int id)
@@ -917,4 +974,3 @@ const struct of_device_id amlogic_vdec_matches[] = {
 	{},
 };
 EXPORT_SYMBOL(amlogic_vdec_matches);
-

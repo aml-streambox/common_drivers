@@ -7,5 +7,9 @@
 / {
 	model = "CoreLab A311D2-TVPro";
 	amlogic-dt-id = "t7c_a311d2_tvpro8g";
-	compatible = "corelab,a311d2-tvpro", "amlogic,a311d2", "amlogic,t7";
+	compatible = "t7c_a311d2_tvpro8g", "corelab,a311d2-tvpro", "amlogic,a311d2", "amlogic,t7";
+};
+
+&cpu_ver_name {
+	compatible = "amlogic, cpu-major-id-t7c";
 };

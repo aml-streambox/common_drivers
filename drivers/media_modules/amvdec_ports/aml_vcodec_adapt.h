@@ -88,6 +88,8 @@ void vdec_write_stream_data(struct aml_vdec_adapt *ada_ctx, u32 addr, u32 size);
 
 void vdec_write_stream_data_inner(struct aml_vdec_adapt *ada_ctx, char *addr, u32 size, u64 timestamp);
 
+void vdec_write_stream_data_vaddr(struct aml_vdec_adapt *ada_ctx, char *addr, u32 size, u64 timestamp);
+
 void v4l2_set_ext_buf_addr(struct aml_vdec_adapt *ada_ctx, struct dmabuf_dmx_sec_es_data *es_data, int offset);
 
 int vdec_get_vdec_id(struct aml_vdec_adapt *ada_ctx);
@@ -95,4 +97,3 @@ int vdec_get_vdec_id(struct aml_vdec_adapt *ada_ctx);
 void vdec_thread_wakeup(struct aml_vdec_adapt *ada_ctx);
 
 #endif /* VDEC_ADAPT_H */
-

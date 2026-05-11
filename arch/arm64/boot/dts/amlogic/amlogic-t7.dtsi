@@ -675,7 +675,8 @@
 
 			display_clkc: clock-controller@e0 {
 				compatible = "amlogic,t7-display-clkc";
-				reg = <0x0 0x00e0 0x0 0x44>;
+				reg = <0x0 0x00e0 0x0 0x44>,
+				      <0x0 0x0140 0x0 0x10>;
 				#clock-cells = <1>;
 				clocks = <&xtal>,
 					 <&fdiv2p5>,

@@ -28,8 +28,20 @@
 
 struct t7_display_clkc {
 	void __iomem *base;
+	void __iomem *media_base;
 	spinlock_t lock;
 	struct clk_hw_onecell_data *data;
+};
+
+static const struct clk_parent_data t7_vdec_parent_data[] = {
+	{ .fw_name = "fdiv2p5" },
+	{ .fw_name = "fdiv3" },
+	{ .fw_name = "fdiv4" },
+	{ .fw_name = "fdiv5" },
+	{ .fw_name = "fdiv7" },
+	{ .fw_name = "hifi" },
+	{ .fw_name = "gp0" },
+	{ .fw_name = "xtal" },
 };
 
 static const struct clk_parent_data t7_vpu_parent_data[] = {
@@ -87,6 +99,21 @@ static const char * const t7_vpu_clkc_mux_parent_names[] = {
 static const char * const t7_vapb_mux_parent_names[] = {
 	"t7_display_vapb_0",
 	"t7_display_vapb_1",
+};
+
+static const char * const t7_vdec_mux_parent_names[] = {
+	"t7_display_vdec_p0",
+	"t7_display_vdec_p1",
+};
+
+static const char * const t7_hevcb_mux_parent_names[] = {
+	"t7_display_hevcb_p0",
+	"t7_display_hevcb_p1",
+};
+
+static const char * const t7_hevcf_mux_parent_names[] = {
+	"t7_display_hevcf_p0",
+	"t7_display_hevcf_p1",
 };
 
 static int t7_display_add_mux_parent_data(struct device *dev,
@@ -168,7 +195,227 @@ static int t7_display_add_gate(struct device *dev,
 	return 0;
 }
 
+static int t7_display_add_media_mux_parent_data(struct device *dev,
+					       struct t7_display_clkc *clkc,
+					       unsigned int id, const char *name,
+					       const struct clk_parent_data *parents,
+					       u8 num_parents, unsigned int reg,
+					       u8 shift, u8 width,
+					       unsigned long flags)
+{
+	struct clk_hw *hw;
+
+	hw = devm_clk_hw_register_mux_parent_data_table(dev, name, parents,
+		num_parents, flags, clkc->media_base + reg, shift, width, 0,
+		NULL, &clkc->lock);
+	if (IS_ERR(hw))
+		return dev_err_probe(dev, PTR_ERR(hw), "failed to register %s\n",
+				     name);
+
+	clkc->data->hws[id] = hw;
+	return 0;
+}
+
+static int t7_display_add_media_mux_parent_names(struct device *dev,
+						struct t7_display_clkc *clkc,
+						unsigned int id, const char *name,
+						const char * const *parents,
+						u8 num_parents, unsigned int reg,
+						u8 shift, u8 width,
+						unsigned long flags)
+{
+	struct clk_hw *hw;
+
+	hw = devm_clk_hw_register_mux(dev, name, parents, num_parents, flags,
+		clkc->media_base + reg, shift, width, 0, &clkc->lock);
+	if (IS_ERR(hw))
+		return dev_err_probe(dev, PTR_ERR(hw), "failed to register %s\n",
+				     name);
+
+	clkc->data->hws[id] = hw;
+	return 0;
+}
+
+static int t7_display_add_media_divider(struct device *dev,
+					       struct t7_display_clkc *clkc,
+					       unsigned int id, const char *name,
+					       struct clk_hw *parent, unsigned int reg,
+					       u8 shift, u8 width, unsigned long flags)
+{
+	struct clk_hw *hw;
+
+	hw = devm_clk_hw_register_divider_parent_hw(dev, name, parent, flags,
+		clkc->media_base + reg, shift, width, 0, &clkc->lock);
+	if (IS_ERR(hw))
+		return dev_err_probe(dev, PTR_ERR(hw), "failed to register %s\n",
+				     name);
+
+	clkc->data->hws[id] = hw;
+	return 0;
+}
+
+static int t7_display_add_media_gate(struct device *dev,
+				     struct t7_display_clkc *clkc,
+				     unsigned int id, const char *name,
+				     struct clk_hw *parent, unsigned int reg,
+				     u8 bit_idx, unsigned long flags)
+{
+	struct clk_hw *hw;
+
+	hw = devm_clk_hw_register_gate_parent_hw(dev, name, parent, flags,
+		clkc->media_base + reg, bit_idx, 0, &clkc->lock);
+	if (IS_ERR(hw))
+		return dev_err_probe(dev, PTR_ERR(hw), "failed to register %s\n",
+				     name);
+
+	clkc->data->hws[id] = hw;
+	return 0;
+}
+
 #define T7_HW(_id) clkc->data->hws[CLKID_T7_DISPLAY_##_id]
+
+static int t7_display_register_vdec(struct device *dev,
+				    struct t7_display_clkc *clkc)
+{
+	int ret;
+
+	ret = t7_display_add_media_mux_parent_data(dev, clkc,
+		CLKID_T7_DISPLAY_VDEC_P0_MUX, "t7_display_vdec_p0_sel",
+		t7_vdec_parent_data, ARRAY_SIZE(t7_vdec_parent_data),
+		0x00, 9, 3, 0);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_divider(dev, clkc,
+		CLKID_T7_DISPLAY_VDEC_P0_DIV, "t7_display_vdec_p0_div",
+		T7_HW(VDEC_P0_MUX), 0x00, 0, 7, CLK_SET_RATE_PARENT);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_gate(dev, clkc, CLKID_T7_DISPLAY_VDEC_P0,
+		"t7_display_vdec_p0", T7_HW(VDEC_P0_DIV), 0x00, 8,
+		CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_mux_parent_data(dev, clkc,
+		CLKID_T7_DISPLAY_VDEC_P1_MUX, "t7_display_vdec_p1_sel",
+		t7_vdec_parent_data, ARRAY_SIZE(t7_vdec_parent_data),
+		0x08, 9, 3, 0);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_divider(dev, clkc,
+		CLKID_T7_DISPLAY_VDEC_P1_DIV, "t7_display_vdec_p1_div",
+		T7_HW(VDEC_P1_MUX), 0x08, 0, 7, CLK_SET_RATE_PARENT);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_gate(dev, clkc, CLKID_T7_DISPLAY_VDEC_P1,
+		"t7_display_vdec_p1", T7_HW(VDEC_P1_DIV), 0x08, 8,
+		CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED);
+	if (ret)
+		return ret;
+
+	return t7_display_add_media_mux_parent_names(dev, clkc,
+		CLKID_T7_DISPLAY_VDEC_MUX, "t7_display_vdec_mux",
+		t7_vdec_mux_parent_names, ARRAY_SIZE(t7_vdec_mux_parent_names),
+		0x08, 15, 1, CLK_SET_RATE_PARENT);
+}
+
+static int t7_display_register_hevc(struct device *dev,
+				    struct t7_display_clkc *clkc)
+{
+	int ret;
+
+	ret = t7_display_add_media_mux_parent_data(dev, clkc,
+		CLKID_T7_DISPLAY_HEVCB_P0_MUX, "t7_display_hevcb_p0_sel",
+		t7_vdec_parent_data, ARRAY_SIZE(t7_vdec_parent_data),
+		0x04, 25, 3, 0);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_divider(dev, clkc,
+		CLKID_T7_DISPLAY_HEVCB_P0_DIV, "t7_display_hevcb_p0_div",
+		T7_HW(HEVCB_P0_MUX), 0x04, 16, 7, CLK_SET_RATE_PARENT);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_gate(dev, clkc, CLKID_T7_DISPLAY_HEVCB_P0,
+		"t7_display_hevcb_p0", T7_HW(HEVCB_P0_DIV), 0x04, 24,
+		CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_mux_parent_data(dev, clkc,
+		CLKID_T7_DISPLAY_HEVCB_P1_MUX, "t7_display_hevcb_p1_sel",
+		t7_vdec_parent_data, ARRAY_SIZE(t7_vdec_parent_data),
+		0x0c, 25, 3, 0);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_divider(dev, clkc,
+		CLKID_T7_DISPLAY_HEVCB_P1_DIV, "t7_display_hevcb_p1_div",
+		T7_HW(HEVCB_P1_MUX), 0x0c, 16, 7, CLK_SET_RATE_PARENT);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_gate(dev, clkc, CLKID_T7_DISPLAY_HEVCB_P1,
+		"t7_display_hevcb_p1", T7_HW(HEVCB_P1_DIV), 0x0c, 24,
+		CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_mux_parent_names(dev, clkc,
+		CLKID_T7_DISPLAY_HEVCB_MUX, "t7_display_hevcb_mux",
+		t7_hevcb_mux_parent_names, ARRAY_SIZE(t7_hevcb_mux_parent_names),
+		0x0c, 31, 1, CLK_SET_RATE_PARENT);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_mux_parent_data(dev, clkc,
+		CLKID_T7_DISPLAY_HEVCF_P0_MUX, "t7_display_hevcf_p0_sel",
+		t7_vdec_parent_data, ARRAY_SIZE(t7_vdec_parent_data),
+		0x04, 9, 3, 0);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_divider(dev, clkc,
+		CLKID_T7_DISPLAY_HEVCF_P0_DIV, "t7_display_hevcf_p0_div",
+		T7_HW(HEVCF_P0_MUX), 0x04, 0, 7, CLK_SET_RATE_PARENT);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_gate(dev, clkc, CLKID_T7_DISPLAY_HEVCF_P0,
+		"t7_display_hevcf_p0", T7_HW(HEVCF_P0_DIV), 0x04, 8,
+		CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_mux_parent_data(dev, clkc,
+		CLKID_T7_DISPLAY_HEVCF_P1_MUX, "t7_display_hevcf_p1_sel",
+		t7_vdec_parent_data, ARRAY_SIZE(t7_vdec_parent_data),
+		0x0c, 9, 3, 0);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_divider(dev, clkc,
+		CLKID_T7_DISPLAY_HEVCF_P1_DIV, "t7_display_hevcf_p1_div",
+		T7_HW(HEVCF_P1_MUX), 0x0c, 0, 7, CLK_SET_RATE_PARENT);
+	if (ret)
+		return ret;
+
+	ret = t7_display_add_media_gate(dev, clkc, CLKID_T7_DISPLAY_HEVCF_P1,
+		"t7_display_hevcf_p1", T7_HW(HEVCF_P1_DIV), 0x0c, 8,
+		CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED);
+	if (ret)
+		return ret;
+
+	return t7_display_add_media_mux_parent_names(dev, clkc,
+		CLKID_T7_DISPLAY_HEVCF_MUX, "t7_display_hevcf_mux",
+		t7_hevcf_mux_parent_names, ARRAY_SIZE(t7_hevcf_mux_parent_names),
+		0x0c, 15, 1, CLK_SET_RATE_PARENT);
+}
 
 static int t7_display_register_vpu(struct device *dev,
 				   struct t7_display_clkc *clkc)
@@ -484,6 +731,22 @@ static int t7_display_clkc_probe(struct platform_device *pdev)
 	clkc->base = devm_ioremap(dev, res->start, resource_size(res));
 	if (!clkc->base)
 		return -ENOMEM;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!res)
+		return -EINVAL;
+
+	clkc->media_base = devm_ioremap(dev, res->start, resource_size(res));
+	if (!clkc->media_base)
+		return -ENOMEM;
+
+	ret = t7_display_register_vdec(dev, clkc);
+	if (ret)
+		return ret;
+
+	ret = t7_display_register_hevc(dev, clkc);
+	if (ret)
+		return ret;
 
 	ret = t7_display_register_vpu(dev, clkc);
 	if (ret)

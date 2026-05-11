@@ -100,6 +100,14 @@ static long meson_clk_dualdiv_round_rate(struct clk_hw *hw, unsigned long rate,
 	return __dualdiv_param_to_rate(*parent_rate, setting);
 }
 
+static int meson_clk_dualdiv_determine_rate(struct clk_hw *hw,
+					    struct clk_rate_request *req)
+{
+	req->rate = meson_clk_dualdiv_round_rate(hw, req->rate,
+						  &req->best_parent_rate);
+	return 0;
+}
+
 static int meson_clk_dualdiv_set_rate(struct clk_hw *hw, unsigned long rate,
 				      unsigned long parent_rate)
 {
@@ -122,7 +130,7 @@ static int meson_clk_dualdiv_set_rate(struct clk_hw *hw, unsigned long rate,
 
 const struct clk_ops meson_clk_dualdiv_ops = {
 	.recalc_rate	= meson_clk_dualdiv_recalc_rate,
-	.round_rate	= meson_clk_dualdiv_round_rate,
+	.determine_rate	= meson_clk_dualdiv_determine_rate,
 	.set_rate	= meson_clk_dualdiv_set_rate,
 };
 EXPORT_SYMBOL_GPL(meson_clk_dualdiv_ops);

@@ -99,6 +99,13 @@ static long mpll_round_rate(struct clk_hw *hw,
 	return rate_from_params(*parent_rate, sdm, n2);
 }
 
+static int mpll_determine_rate(struct clk_hw *hw,
+			       struct clk_rate_request *req)
+{
+	req->rate = mpll_round_rate(hw, req->rate, &req->best_parent_rate);
+	return 0;
+}
+
 static int mpll_set_rate(struct clk_hw *hw,
 			 unsigned long rate,
 			 unsigned long parent_rate)
@@ -157,13 +164,13 @@ static int mpll_init(struct clk_hw *hw)
 
 const struct clk_ops meson_clk_mpll_ro_ops = {
 	.recalc_rate	= mpll_recalc_rate,
-	.round_rate	= mpll_round_rate,
+	.determine_rate	= mpll_determine_rate,
 };
 EXPORT_SYMBOL_GPL(meson_clk_mpll_ro_ops);
 
 const struct clk_ops meson_clk_mpll_ops = {
 	.recalc_rate	= mpll_recalc_rate,
-	.round_rate	= mpll_round_rate,
+	.determine_rate	= mpll_determine_rate,
 	.set_rate	= mpll_set_rate,
 	.init		= mpll_init,
 };

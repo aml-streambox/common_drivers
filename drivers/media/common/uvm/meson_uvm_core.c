@@ -223,7 +223,7 @@ static void meson_uvm_detach(struct dma_buf *dmabuf,
 	/* TODO */
 }
 
-static int meson_uvm_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
+static int meson_uvm_vmap(struct dma_buf *dmabuf, struct iosys_map *map)
 {
 	struct uvm_handle *handle;
 	struct sg_table *sgt;
@@ -272,12 +272,12 @@ static int meson_uvm_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 	handle->ua->vaddr = vaddr;
 	UVM_PRINTK(UVM_INFO, "%s called.\n", __func__);
 
-	dma_buf_map_set_vaddr(map, vaddr);
+	iosys_map_set_vaddr(map, vaddr);
 
 	return 0;
 }
 
-static void meson_uvm_vunmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
+static void meson_uvm_vunmap(struct dma_buf *dmabuf, struct iosys_map *map)
 {
 	struct uvm_handle *handle = dmabuf->priv;
 

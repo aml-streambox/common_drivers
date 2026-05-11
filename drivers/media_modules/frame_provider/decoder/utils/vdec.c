@@ -111,6 +111,38 @@ int ionvideo_assign_map(char **receiver_name, int *inst)
 
 static DEFINE_MUTEX(vdec_mutex);
 
+static bool tvpro_vdec_power_checkpoint(int step, const char *name,
+	enum vdec_type_e core)
+{
+	return false;
+}
+
+static bool tvpro_vdec_release_checkpoint(int step, const char *name,
+	struct vdec_s *vdec)
+{
+	return false;
+}
+
+static bool tvpro_vdec_core_checkpoint(int step, const char *name,
+	struct vdec_s *vdec, unsigned long mask)
+{
+	return false;
+}
+
+static bool tvpro_vdec_core_stop_is_latched(void)
+{
+	return false;
+}
+
+static void tvpro_vdec_dump_vld_input(const char *stage, struct vdec_s *vdec,
+	struct vframe_chunk_s *chunk, int size)
+{
+}
+
+static void tvpro_vdec_apply_h264_vld_control_override(struct vdec_s *vdec)
+{
+}
+
 #define MC_SIZE (4096 * 4)
 #define CMA_ALLOC_SIZE SZ_64M
 #define MEM_NAME "vdec_prealloc"
@@ -281,6 +313,34 @@ struct vdec_core_s {
 };
 
 static struct vdec_core_s *vdec_core;
+
+static void tvpro_vdec_core_abort_run_locked(struct vdec_core_s *core,
+	struct vdec_s *vdec, unsigned long mask, int step)
+{
+	unsigned long i;
+	unsigned long t = mask;
+
+	while (t) {
+		i = __ffs(t);
+		clear_bit(i, &vdec->active_mask);
+		t &= ~(1 << i);
+	}
+
+	vdec->sched_mask &= ~mask;
+	core->sched_mask &= ~mask;
+	if (vdec->active_mask == 0) {
+		vdec->status = VDEC_STATUS_CONNECTED;
+		wake_up_interruptible(&vdec->idle_wait);
+	}
+}
+
+static void tvpro_vdec_core_abort_run(struct vdec_core_s *core,
+	struct vdec_s *vdec, unsigned long mask, int step)
+{
+	mutex_lock(&vdec_mutex);
+	tvpro_vdec_core_abort_run_locked(core, vdec, mask, step);
+	mutex_unlock(&vdec_mutex);
+}
 
 vdec_frame_rate_event_func frame_rate_notify = NULL;
 
@@ -1539,8 +1599,8 @@ struct vdec_s *vdec_create(struct stream_port_s *port,
 			VDEC_TYPE_FRAME_BLOCK :
 			VDEC_TYPE_STREAM_PARSER;
 
-	id = ida_simple_get(&vdec_core->ida,
-			0, MAX_INSTANCE_MUN, GFP_KERNEL);
+	id = ida_alloc_range(&vdec_core->ida,
+			0, MAX_INSTANCE_MUN - 1, GFP_KERNEL);
 	if (id < 0) {
 		pr_info("vdec_create request id failed!ret =%d\n", id);
 		return NULL;
@@ -1979,6 +2039,9 @@ int vdec_prepare_input(struct vdec_s *vdec, struct vframe_chunk_s **p)
 
 			WRITE_VREG(VLD_MEM_VIFIFO_CONTROL,
 				(0x11 << 16) | (1<<10) | (7<<3));
+			tvpro_vdec_apply_h264_vld_control_override(vdec);
+			tvpro_vdec_dump_vld_input("prepared-frame", vdec, chunk,
+				chunk->size);
 
 		} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
 			WRITE_VREG(HEVC_STREAM_START_ADDR, block->start);
@@ -2269,6 +2332,7 @@ u32 vdec_offset_prepare_input(struct vdec_s *vdec, u32 consume_byte, u32 data_of
 
 			WRITE_VREG(VLD_MEM_VIFIFO_CONTROL,
 				(0x11 << 16) | (1<<10) | (7<<3));
+			tvpro_vdec_apply_h264_vld_control_override(vdec);
 
 		}
 	} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
@@ -2316,9 +2380,10 @@ void vdec_enable_input(struct vdec_s *vdec)
 	if (vdec->status != VDEC_STATUS_ACTIVE)
 		return;
 
-	if (input->target == VDEC_INPUT_TARGET_VLD)
+	if (input->target == VDEC_INPUT_TARGET_VLD) {
 		SET_VREG_MASK(VLD_MEM_VIFIFO_CONTROL, (1<<2) | (1<<1));
-	else if (input->target == VDEC_INPUT_TARGET_HEVC) {
+		tvpro_vdec_dump_vld_input("enable", vdec, NULL, 0);
+	} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
 		if (vdec_stream_based(vdec)) {
 			if (vdec->vbuf.no_parser)
 				/*set endian for non-parser mode. */
@@ -2919,7 +2984,7 @@ int vdec_destroy(struct vdec_s *vdec)
 #ifdef CONFIG_AMLOGIC_MEDIA_MULTI_DEC
 	vdec_profile_flush(vdec);
 #endif
-	ida_simple_remove(&vdec_core->ida, vdec->id);
+	ida_free(&vdec_core->ida, vdec->id);
 	if (vdec->mvfrm)
 		vfree(vdec->mvfrm);
 	vfree(vdec);
@@ -3736,31 +3801,86 @@ static bool vdec_inactive_core_reset(struct vdec_s * vdec)
 {
 	struct vdec_core_s *core = vdec_core;
 	int idle_mask;
+	bool stopped = false;
 
+	if (tvpro_vdec_release_checkpoint(830, "inactive_reset enter", vdec))
+		return true;
 	mutex_lock(&vdec_mutex);
+	if (tvpro_vdec_release_checkpoint(831, "inactive_reset after lock", vdec)) {
+		stopped = true;
+		goto out_unlock;
+	}
 	idle_mask = vdec->core_mask & (~core->sched_mask);
+	if (tvpro_vdec_release_checkpoint(832, "inactive_reset after idle_mask", vdec)) {
+		stopped = true;
+		goto out_unlock;
+	}
 
 	if (idle_mask) {
 		if ((idle_mask & CORE_MASK_VDEC_1)
 			&& (vdec_core->power_ref_count[VDEC_1])) {
+			if (tvpro_vdec_release_checkpoint(833, "inactive_reset before vdec_reset_core", vdec)) {
+				stopped = true;
+				goto out_unlock;
+			}
+			if (get_cpu_major_id() != AM_MESON_CPU_MAJOR_ID_T7)
 				vdec_reset_core(vdec);
+			if (tvpro_vdec_release_checkpoint(834, "inactive_reset after vdec_reset_core", vdec)) {
+				stopped = true;
+				goto out_unlock;
+			}
 		}
 		if (vdec_core->power_ref_count[VDEC_HEVC]) {
 			if (is_support_dual_core() && is_vdec_dual_core_mode(vdec)) {
-				if (idle_mask & CORE_MASK_HEVC_FRONT)
+				if (idle_mask & CORE_MASK_HEVC_FRONT) {
+					if (tvpro_vdec_release_checkpoint(835, "inactive_reset before hevc_front_reset", vdec)) {
+						stopped = true;
+						goto out_unlock;
+					}
 					amhevc_reset_f();
+					if (tvpro_vdec_release_checkpoint(836, "inactive_reset after hevc_front_reset", vdec)) {
+						stopped = true;
+						goto out_unlock;
+					}
+				}
 
-				if (idle_mask & CORE_MASK_HEVC_BACK)
+				if (idle_mask & CORE_MASK_HEVC_BACK) {
+					if (tvpro_vdec_release_checkpoint(837, "inactive_reset before hevc_back_reset", vdec)) {
+						stopped = true;
+						goto out_unlock;
+					}
 					amhevc_reset_b();
+					if (tvpro_vdec_release_checkpoint(838, "inactive_reset after hevc_back_reset", vdec)) {
+						stopped = true;
+						goto out_unlock;
+					}
+				}
 			} else {
-				if (idle_mask & CORE_MASK_HEVC)
+				if (idle_mask & CORE_MASK_HEVC) {
+					if (tvpro_vdec_release_checkpoint(839, "inactive_reset before hevc_reset_core", vdec)) {
+						stopped = true;
+						goto out_unlock;
+					}
 					hevc_reset_core(vdec);
+					if (tvpro_vdec_release_checkpoint(840, "inactive_reset after hevc_reset_core", vdec)) {
+						stopped = true;
+						goto out_unlock;
+					}
+				}
 			}
 		}
 	}
+
+out_unlock:
 	mutex_unlock(&vdec_mutex);
+	if (stopped)
+		return true;
+	if (tvpro_vdec_release_checkpoint(841, "inactive_reset after unlock", vdec))
+		return true;
 
 	usleep_range(10, 20);
+	if (tvpro_vdec_release_checkpoint(842, "inactive_reset after sleep", vdec))
+		return true;
 
 	return false;
 }
@@ -3770,6 +3890,9 @@ static bool vdec_inactive_core_reset(struct vdec_s * vdec)
 void vdec_release(struct vdec_s *vdec)
 {
 	u32 wcount = 0;
+
+	if (tvpro_vdec_release_checkpoint(800, "release enter", vdec))
+		return;
 
 	//trace_vdec_release(vdec);/*DEBUG_TMP*/
 #ifdef VDEC_DEBUG_SUPPORT
@@ -3781,8 +3904,16 @@ void vdec_release(struct vdec_s *vdec)
 	}
 #endif
 	/* When release, userspace systemctl need this duration 0 event */
+	if (tvpro_vdec_release_checkpoint(801, "before frame_rate_uevent", vdec))
+		return;
 	vdec_frame_rate_uevent(0);
+	if (tvpro_vdec_release_checkpoint(802, "after frame_rate_uevent", vdec))
+		return;
+	if (tvpro_vdec_release_checkpoint(803, "before vdec_disconnect", vdec))
+		return;
 	vdec_disconnect(vdec);
+	if (tvpro_vdec_release_checkpoint(804, "after vdec_disconnect", vdec))
+		return;
 
 	if (!vdec->disable_vfm && vdec->vframe_provider.name) {
 		if (!vdec_single(vdec)) {
@@ -3829,22 +3960,53 @@ void vdec_release(struct vdec_s *vdec)
 #endif
 	vdec_fps_clear(vdec->id);
 
-	vdec_inactive_core_reset(vdec);
+	if (tvpro_vdec_release_checkpoint(805, "before inactive_core_reset", vdec))
+		return;
+	if (vdec_inactive_core_reset(vdec))
+		return;
+	if (tvpro_vdec_release_checkpoint(806, "after inactive_core_reset", vdec))
+		return;
 
 	if (atomic_read(&vdec_core->vdec_nr) == 1) {
-		vdec_disable_DMC(vdec);
+		if (tvpro_vdec_release_checkpoint(820, "before disable_DMC", vdec))
+			return;
+		if (get_cpu_major_id() != AM_MESON_CPU_MAJOR_ID_T7 &&
+		    !IS_ERR_OR_NULL(vdec->dev) && vdec->dev->dev.driver)
+			vdec_disable_DMC(vdec);
+		if (tvpro_vdec_release_checkpoint(821, "after disable_DMC", vdec))
+			return;
+		if (tvpro_vdec_release_checkpoint(822, "before set_vf_dur", vdec))
+			return;
 		vdec_set_vf_dur(0);
+		if (tvpro_vdec_release_checkpoint(823, "after set_vf_dur", vdec))
+			return;
+		if (tvpro_vdec_release_checkpoint(824, "before set_mmu_copy_flag", vdec))
+			return;
 		vdec_set_mmu_copy_flag(false);
+		if (tvpro_vdec_release_checkpoint(825, "after set_mmu_copy_flag", vdec))
+			return;
 	}
 
+	if (tvpro_vdec_release_checkpoint(807, "before platform_device_unregister", vdec))
+		return;
 	platform_device_unregister(vdec->dev);
+	if (tvpro_vdec_release_checkpoint(808, "after platform_device_unregister", vdec))
+		return;
 	/*Check if the vdec still in connected list, if yes, delete it*/
 	vdec_connect_list_force_clear(vdec_core, vdec);
 
+	if (tvpro_vdec_release_checkpoint(809, "before vbuf release", vdec))
+		return;
 	if (vdec->vbuf.ops && !vdec->master)
 		vdec->vbuf.ops->release(&vdec->vbuf);
+	if (tvpro_vdec_release_checkpoint(810, "after vbuf release", vdec))
+		return;
 
+	if (tvpro_vdec_release_checkpoint(811, "before userdata release", vdec))
+		return;
 	vdec_userdata_ctx_release(vdec);
+	if (tvpro_vdec_release_checkpoint(812, "after userdata release", vdec))
+		return;
 
 	pr_debug("vdec_release instance %p, total %d\n", vdec,
 		atomic_read(&vdec_core->vdec_nr));
@@ -3861,7 +4023,11 @@ void vdec_release(struct vdec_s *vdec)
 	}
 	vdec_core->vdec_resource_status &= ~BIT(vdec->frame_base_video_path);
 	mutex_unlock(&vdec_mutex);
+	if (tvpro_vdec_release_checkpoint(813, "before vdec_destroy", vdec))
+		return;
 	vdec_destroy(vdec);
+	if (tvpro_vdec_release_checkpoint(814, "after vdec_destroy", vdec))
+		return;
 
 	mutex_lock(&vdec_mutex);
 	inited_vcodec_num--;
@@ -4290,6 +4456,9 @@ unsigned long vdec_ready_to_run(struct vdec_s *vdec, unsigned long mask)
 	struct vdec_core_s *core = vdec_core;
 	bool check_run_ready = true;
 
+	if (tvpro_vdec_core_checkpoint(1400, "ready_to_run enter", vdec, mask))
+		return 0;
+
 #ifdef VDEC_DEBUG_SUPPORT
 	inc_profi_count(mask, vdec->ready_to_run_count);
 #endif
@@ -4350,6 +4519,8 @@ unsigned long vdec_ready_to_run(struct vdec_s *vdec, unsigned long mask)
 	}
 
 	if (vdec_core_with_input(mask)) {
+		if (tvpro_vdec_core_checkpoint(1401, "ready_to_run before input check", vdec, mask))
+			return 0;
 		/* check frame based input underrun */
 		if ((input  && !input->eos && input_frame_based(input)
 			&& (!vdec_input_next_chunk(input)))) {
@@ -4361,17 +4532,23 @@ unsigned long vdec_ready_to_run(struct vdec_s *vdec, unsigned long mask)
 			else
 				return false;
 		}
+		if (tvpro_vdec_core_checkpoint(1402, "ready_to_run after input check", vdec, mask))
+			return 0;
 
 		/* check streaming prepare level threshold if not EOS */
 		if (input && input_stream_based(input) && !input->eos) {
 			u32 rp, wp, level;
 
+			if (tvpro_vdec_core_checkpoint(1403, "ready_to_run before stream level", vdec, mask))
+				return 0;
 			rp = STBUF_READ(&vdec->vbuf, get_rp);
 			wp = STBUF_READ(&vdec->vbuf, get_wp);
 			if (wp < rp)
 				level = input->size + wp - rp;
 			else
 				level = wp - rp;
+			if (tvpro_vdec_core_checkpoint(1404, "ready_to_run after stream level", vdec, mask))
+				return 0;
 
 			if (debug & 0x8)
 				pr_info("%s:%d level 0x%x ready_mask = 0x%lx, mask = 0x%lx\n",
@@ -4443,7 +4620,13 @@ unsigned long vdec_ready_to_run(struct vdec_s *vdec, unsigned long mask)
 #endif
 	if ((mask & ~CORE_MASK_HEVC_BACK) && check_run_ready) {
 		unsigned long tmp_mask = 0;
+		if (tvpro_vdec_core_checkpoint(1405, "ready_to_run before decoder run_ready", vdec,
+			mask & ~CORE_MASK_HEVC_BACK))
+			return ready_mask;
 		tmp_mask = vdec->run_ready(vdec, (mask & ~CORE_MASK_HEVC_BACK));
+		if (tvpro_vdec_core_checkpoint(1406, "ready_to_run after decoder run_ready", vdec,
+			tmp_mask))
+			return ready_mask;
 		if (debug & 0x8)
 			pr_info("%s:%d run_ready tmp_mask = 0x%lx\n",
 				__func__, vdec->id, tmp_mask);
@@ -4484,8 +4667,12 @@ unsigned long vdec_ready_to_run(struct vdec_s *vdec, unsigned long mask)
 		pr_info("%s:%d ready_mask = 0x%lx, mask = 0x%lx, core->stream_buff_flag 0x%lx\n",
 			__func__, vdec->id, ready_mask, mask, core->stream_buff_flag);
 
+	if (tvpro_vdec_core_checkpoint(1407, "ready_to_run done", vdec, ready_mask))
+		return ready_mask;
 	return ready_mask;
 error_handle:
+	if (tvpro_vdec_core_checkpoint(1499, "ready_to_run error", vdec, mask))
+		return 0;
 	return 0;
 }
 
@@ -4526,22 +4713,34 @@ void vdec_prepare_run(struct vdec_s *vdec, unsigned long mask)
 			DMC_DEV_TYPE_NON_SECURE;
 	bool front_back_mode = is_vdec_dual_core_mode(vdec);
 
+	(void)tvpro_vdec_core_checkpoint(1300, "prepare_run enter", vdec, mask);
 	vdec_route_interrupt(vdec, mask, true);
+	(void)tvpro_vdec_core_checkpoint(1301, "prepare_run after route_interrupt", vdec, mask);
 
 	if (vdec_stream_based(vdec) && !vdec_secure(vdec))
 	{
+		(void)tvpro_vdec_core_checkpoint(1302, "prepare_run before parser tee", vdec, mask);
 		tee_config_device_state(DMC_DEV_ID_PARSER, 0);
+		(void)tvpro_vdec_core_checkpoint(1303, "prepare_run after parser tee", vdec, mask);
 	}
 
 	if (input->target == VDEC_INPUT_TARGET_VLD) {
+		(void)tvpro_vdec_core_checkpoint(1304, "prepare_run before vdec tee", vdec, mask);
 		tee_config_device_state(DMC_DEV_ID_VDEC, secure);
+		(void)tvpro_vdec_core_checkpoint(1305, "prepare_run after vdec tee", vdec, mask);
 
 		if (is_support_dual_core()) {
-			if (mask & CORE_MASK_HEVC_BACK)
+			if (mask & CORE_MASK_HEVC_BACK) {
+				(void)tvpro_vdec_core_checkpoint(1306, "prepare_run before hevc_b tee", vdec, mask);
 				tee_config_device_state(DMC_DEV_ID_HEVC_B, secure);
+				(void)tvpro_vdec_core_checkpoint(1307, "prepare_run after hevc_b tee", vdec, mask);
+			}
 		} else {
-			if (mask & CORE_MASK_HEVC)
+			if (mask & CORE_MASK_HEVC) {
+				(void)tvpro_vdec_core_checkpoint(1308, "prepare_run before hevc tee", vdec, mask);
 				tee_config_device_state(DMC_DEV_ID_HEVC, secure);
+				(void)tvpro_vdec_core_checkpoint(1309, "prepare_run after hevc tee", vdec, mask);
+			}
 		}
 	} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
 		if (is_support_dual_core()) {
@@ -4569,6 +4768,7 @@ void vdec_prepare_run(struct vdec_s *vdec, unsigned long mask)
 
 	vdec->need_more_data |= VDEC_NEED_MORE_DATA_RUN;
 	vdec->need_more_data &= ~VDEC_NEED_MORE_DATA_DIRTY;
+	(void)tvpro_vdec_core_checkpoint(1310, "prepare_run done", vdec, mask);
 }
 
 static struct vdec_s * vdec_get_last_vdec(int format)
@@ -4639,10 +4839,12 @@ static int vdec_core_thread(void *data)
 		struct vdec_s *vdec, *tmp, *worker;
 		unsigned long sched_mask = 0;
 		LIST_HEAD(disconnecting_list);
+		(void)tvpro_vdec_core_checkpoint(1200, "thread woke", NULL, core->sched_mask);
 		ATRACE_COUNTER("0.vdec_thread", 1);
 		if (kthread_should_stop())
 			break;
 		mutex_lock(&vdec_mutex);
+		(void)tvpro_vdec_core_checkpoint(1210, "thread after mutex lock", NULL, core->sched_mask);
 
 		thread_start_timestamp = vdec_get_us_time_system();
 		if (debug & 0x8)
@@ -4650,6 +4852,7 @@ static int vdec_core_thread(void *data)
 
 		vdec_core->run_flag = 0;
 
+		(void)tvpro_vdec_core_checkpoint(1211, "thread before active cleanup", NULL, core->sched_mask);
 		/* clean up previous active vdec's input */
 		list_for_each_entry(vdec, &core->connected_vdec_list, list) {
 			unsigned long mask = vdec->sched_mask &
@@ -4688,7 +4891,16 @@ static int vdec_core_thread(void *data)
 				pr_info("%s:%d mask 0x%lx, vdec sched_mask 0x%lx, core sched_mask 0x%lx\n",
 					__func__, vdec->id, mask, vdec->sched_mask, core->sched_mask);
 		}
+		(void)tvpro_vdec_core_checkpoint(1212, "thread after active cleanup", NULL, core->sched_mask);
+		if (tvpro_vdec_core_checkpoint(1213, "thread before buff status", NULL, core->sched_mask)) {
+			mutex_unlock(&vdec_mutex);
+			continue;
+		}
 		vdec_update_buff_status();
+		if (tvpro_vdec_core_checkpoint(1214, "thread after buff status", NULL, core->sched_mask)) {
+			mutex_unlock(&vdec_mutex);
+			continue;
+		}
 		/*
 		 *todo:
 		 * this is the case when the decoder is in active mode and
@@ -4733,6 +4945,8 @@ static int vdec_core_thread(void *data)
 		}
 		vdec_core_unlock(vdec_core, flags);
 		mutex_unlock(&vdec_mutex);
+		if (tvpro_vdec_core_checkpoint(1215, "thread before scheduler loop", NULL, core->sched_mask))
+			continue;
 
 		for (i = VDEC_MAX - 1; i >= VDEC_1; i--) {
 			if (debug & 0x8)
@@ -4831,35 +5045,108 @@ static int vdec_core_thread(void *data)
 			unsigned long mask = sched_mask;
 			unsigned long i;
 
+			if (tvpro_vdec_core_checkpoint(1201, "thread selected worker", vdec, mask)) {
+				tvpro_vdec_core_abort_run(core, vdec, mask, 1201);
+				continue;
+			}
+
 			/* setting active_mask should be atomic.
 			 * it can be modified by decoder driver callbacks.
 			 */
+			if (tvpro_vdec_core_checkpoint(1220, "thread before active mutex", vdec, mask)) {
+				tvpro_vdec_core_abort_run(core, vdec, mask, 1220);
+				continue;
+			}
 			mutex_lock(&vdec_mutex);
+			if (tvpro_vdec_core_checkpoint(1221, "thread after active mutex", vdec, mask)) {
+				tvpro_vdec_core_abort_run_locked(core, vdec, mask, 1221);
+				mutex_unlock(&vdec_mutex);
+				continue;
+			}
 			while (sched_mask) {
 				i = __ffs(sched_mask);
 				set_bit(i, &vdec->active_mask);
 				vdec_set_last_vdec(vdec, i);
 				sched_mask &= ~(1 << i);
 			}
+			if (tvpro_vdec_core_checkpoint(1222, "thread after active bits", vdec, mask)) {
+				tvpro_vdec_core_abort_run_locked(core, vdec, mask, 1222);
+				mutex_unlock(&vdec_mutex);
+				continue;
+			}
 
 			/* vdec's sched_mask is only set from core thread */
+			if (tvpro_vdec_core_checkpoint(1231, "thread before vdec sched mask", vdec, mask)) {
+				tvpro_vdec_core_abort_run_locked(core, vdec, mask, 1231);
+				mutex_unlock(&vdec_mutex);
+				continue;
+			}
 			vdec->sched_mask |= mask;
+			if (tvpro_vdec_core_checkpoint(1232, "thread after vdec sched mask", vdec, mask)) {
+				tvpro_vdec_core_abort_run_locked(core, vdec, mask, 1232);
+				mutex_unlock(&vdec_mutex);
+				continue;
+			}
 			if (debug & 2) {
 				vdec->mc_loaded = 0;/*alway reload firmware*/
 				vdec->mc_back_loaded = 0;
 			}
+			if (tvpro_vdec_core_checkpoint(1233, "thread before active status", vdec, mask)) {
+				tvpro_vdec_core_abort_run_locked(core, vdec, mask, 1233);
+				mutex_unlock(&vdec_mutex);
+				continue;
+			}
 			vdec_set_status(vdec, VDEC_STATUS_ACTIVE);
+			if (tvpro_vdec_core_checkpoint(1223, "thread after active status", vdec, mask)) {
+				tvpro_vdec_core_abort_run_locked(core, vdec, mask, 1223);
+				mutex_unlock(&vdec_mutex);
+				continue;
+			}
 
 			//mutex with inactive core reset
+			if (tvpro_vdec_core_checkpoint(1234, "thread before core sched mask", vdec, mask)) {
+				tvpro_vdec_core_abort_run_locked(core, vdec, mask, 1234);
+				mutex_unlock(&vdec_mutex);
+				continue;
+			}
 			core->sched_mask |= mask;
 			mutex_unlock(&vdec_mutex);
+			if (tvpro_vdec_core_checkpoint(1224, "thread after core sched mask", vdec, mask)) {
+				tvpro_vdec_core_abort_run(core, vdec, mask, 1224);
+				continue;
+			}
 
-			if (core->parallel_dec == 1)
+			if (core->parallel_dec == 1) {
+				if (tvpro_vdec_core_checkpoint(1225, "thread before save active hw", vdec, mask)) {
+					tvpro_vdec_core_abort_run(core, vdec, mask, 1225);
+					continue;
+				}
 				vdec_save_active_hw(vdec, mask);
+				if (tvpro_vdec_core_checkpoint(1226, "thread after save active hw", vdec, mask)) {
+					tvpro_vdec_core_abort_run(core, vdec, mask, 1226);
+					continue;
+				}
+			}
 #ifdef CONFIG_AMLOGIC_MEDIA_MULTI_DEC
+			if (tvpro_vdec_core_checkpoint(1227, "thread before profile run", vdec, mask)) {
+				tvpro_vdec_core_abort_run(core, vdec, mask, 1227);
+				continue;
+			}
 			vdec_profile(vdec, VDEC_PROFILE_EVENT_RUN, mask);
+			if (tvpro_vdec_core_checkpoint(1228, "thread after profile run", vdec, mask)) {
+				tvpro_vdec_core_abort_run(core, vdec, mask, 1228);
+				continue;
+			}
 #endif
+			if (tvpro_vdec_core_checkpoint(1202, "thread before prepare_run", vdec, mask)) {
+				tvpro_vdec_core_abort_run(core, vdec, mask, 1202);
+				continue;
+			}
 			vdec_prepare_run(vdec, mask);
+			if (tvpro_vdec_core_checkpoint(1203, "thread after prepare_run", vdec, mask)) {
+				tvpro_vdec_core_abort_run(core, vdec, mask, 1203);
+				continue;
+			}
 #ifdef VDEC_DEBUG_SUPPORT
 			inc_profi_count(mask, vdec->run_count);
 			update_profi_clk_run(vdec, mask, get_current_clk());
@@ -4867,7 +5154,12 @@ static int vdec_core_thread(void *data)
 			ATRACE_COUNTER("0.vdec_run_id", vdec->id);
 			ATRACE_COUNTER("0.vdec_run_mask", mask);
 			run_start_timestamp = vdec_get_us_time_system();
+			if (tvpro_vdec_core_checkpoint(1204, "thread before vdec run", vdec, mask)) {
+				tvpro_vdec_core_abort_run(core, vdec, mask, 1204);
+				continue;
+			}
 			vdec->run(vdec, mask, vdec_callback, core);
+			(void)tvpro_vdec_core_checkpoint(1205, "thread after vdec run", vdec, mask);
 			if (debug & 0x8)
 				pr_info("%s:vdec_thread run id:%d, mask 0x%lx core sched_mask 0x%lx, time %lld, power_ref_mask 0x%lx\n", __func__, vdec->id, mask,
 					core->sched_mask, vdec_get_us_time_system() - run_start_timestamp, core->power_ref_mask);
@@ -4894,7 +5186,7 @@ static int vdec_core_thread(void *data)
 		/* if there is no new work scheduled and nothing
 		 * is running, sleep 20ms
 		 */
-		if (core->parallel_dec == 1) {
+		if (!tvpro_vdec_core_stop_is_latched() && core->parallel_dec == 1) {
 			unsigned long tmp_flag = core->stream_buff_flag & (~CORE_MASK_COMBINE);
 			unsigned long rem_mask = core->sched_mask ^ core->power_ref_mask;
 			bool comb_flag = (core->stream_buff_flag & CORE_MASK_COMBINE) ? true : false;
@@ -4909,7 +5201,7 @@ static int vdec_core_thread(void *data)
 				up(&core->sem);
 				ATRACE_COUNTER("0.vdec_sleep", 0);
 			}
-		} else if ((!worker) && (!core->sched_mask) && (atomic_read(&vdec_core->vdec_nr) > 0)) {
+		} else if (!tvpro_vdec_core_stop_is_latched() && (!worker) && (!core->sched_mask) && (atomic_read(&vdec_core->vdec_nr) > 0)) {
 			usleep_range(1000, 2000);
 			up(&core->sem);
 		}
@@ -4981,20 +5273,44 @@ void vdec_poweron(enum vdec_type_e core)
 	if (core >= VDEC_MAX)
 		return;
 
+	if (tvpro_vdec_power_checkpoint(500, "poweron start", core))
+		return;
 	mutex_lock(&vdec_mutex);
 
 	vdec_core->power_ref_count[core]++;
+	if (tvpro_vdec_power_checkpoint(501, "after ref inc", core)) {
+		vdec_core->power_ref_count[core]--;
+		mutex_unlock(&vdec_mutex);
+		return;
+	}
 	if (vdec_core->power_ref_count[core] > 1) {
 		mutex_unlock(&vdec_mutex);
 		return;
 	}
 
+	if (tvpro_vdec_power_checkpoint(502, "before vdec_on", core)) {
+		vdec_core->power_ref_count[core]--;
+		mutex_unlock(&vdec_mutex);
+		return;
+	}
 	if (vdec_on(core)) {
+		tvpro_vdec_power_checkpoint(503, "after vdec_on true", core);
+		mutex_unlock(&vdec_mutex);
+		return;
+	}
+	if (tvpro_vdec_power_checkpoint(503, "after vdec_on false", core)) {
+		vdec_core->power_ref_count[core]--;
+		mutex_unlock(&vdec_mutex);
+		return;
+	}
+	if (tvpro_vdec_power_checkpoint(504, "before pm power_on", core)) {
+		vdec_core->power_ref_count[core]--;
 		mutex_unlock(&vdec_mutex);
 		return;
 	}
 
 	vdec_core->pm->power_on(vdec_core->cma_dev, core);
+	tvpro_vdec_power_checkpoint(505, "after pm power_on", core);
 
 	mutex_unlock(&vdec_mutex);
 }
@@ -5128,11 +5444,21 @@ EXPORT_SYMBOL(vdec_source_changed);
 
 void vdec_reset_core(struct vdec_s *vdec)
 {
+	(void)tvpro_vdec_core_checkpoint(1320, "reset_core enter", vdec,
+		vdec ? vdec->core_mask : 0);
 	if (is_support_axi_ctrl()) {
 		/* t7 no dmc req for vdec only */
+		(void)tvpro_vdec_core_checkpoint(1321, "reset_core before dbus off", vdec,
+			vdec ? vdec->core_mask : 0);
 		vdec_dbus_ctrl(0);
+		(void)tvpro_vdec_core_checkpoint(1322, "reset_core after dbus off", vdec,
+			vdec ? vdec->core_mask : 0);
 	} else {
+		(void)tvpro_vdec_core_checkpoint(1321, "reset_core before dmc off", vdec,
+			vdec ? vdec->core_mask : 0);
 		dec_dmc_port_ctrl(0, VDEC_INPUT_TARGET_VLD);
+		(void)tvpro_vdec_core_checkpoint(1322, "reset_core after dmc off", vdec,
+			vdec ? vdec->core_mask : 0);
 	}
 	/*
 	 * 2: assist
@@ -5149,20 +5475,47 @@ void vdec_reset_core(struct vdec_s *vdec)
 	 * 13: ddr
 	 * 14: afifo
 	 */
+	(void)tvpro_vdec_core_checkpoint(1323, "reset_core before sw reset assert", vdec,
+		vdec ? vdec->core_mask : 0);
 	WRITE_VREG(DOS_SW_RESET0, (1<<3)|(1<<4)|(1<<5)|(1<<7)|(1<<8)|(1<<9));
+	(void)tvpro_vdec_core_checkpoint(1324, "reset_core after sw reset assert", vdec,
+		vdec ? vdec->core_mask : 0);
 	WRITE_VREG(DOS_SW_RESET0, 0);
+	(void)tvpro_vdec_core_checkpoint(1325, "reset_core after sw reset clear", vdec,
+		vdec ? vdec->core_mask : 0);
 
 	// clear mmu config
 	if (vdec && (vdec->core_mask & CORE_MASK_HEVC) == 0) {
+		(void)tvpro_vdec_core_checkpoint(1326, "reset_core before mmu clear", vdec,
+			vdec->core_mask);
 		CLEAR_VREG_MASK(VDEC_ASSIST_MMC_CTRL1, 1 << 3);
+		(void)tvpro_vdec_core_checkpoint(1331, "reset_core after mmc ctrl clear", vdec,
+			vdec->core_mask);
 		CLEAR_VREG_MASK(MDEC_PIC_DC_MUX_CTRL, 1 << 31);
+		(void)tvpro_vdec_core_checkpoint(1332, "reset_core after pic dc mux clear", vdec,
+			vdec->core_mask);
 		WRITE_VREG(MDEC_EXTIF_CFG1, 0);
+		(void)tvpro_vdec_core_checkpoint(1333, "reset_core after extif cfg1 clear", vdec,
+			vdec->core_mask);
+		(void)tvpro_vdec_core_checkpoint(1327, "reset_core after mmu clear", vdec,
+			vdec->core_mask);
 	}
 
-	if (is_support_axi_ctrl())
+	if (is_support_axi_ctrl()) {
+		(void)tvpro_vdec_core_checkpoint(1328, "reset_core before dbus on", vdec,
+			vdec ? vdec->core_mask : 0);
 		vdec_dbus_ctrl(1);
-	else
+		(void)tvpro_vdec_core_checkpoint(1329, "reset_core after dbus on", vdec,
+			vdec ? vdec->core_mask : 0);
+	} else {
+		(void)tvpro_vdec_core_checkpoint(1328, "reset_core before dmc on", vdec,
+			vdec ? vdec->core_mask : 0);
 		dec_dmc_port_ctrl(1, VDEC_INPUT_TARGET_VLD);
+		(void)tvpro_vdec_core_checkpoint(1329, "reset_core after dmc on", vdec,
+			vdec ? vdec->core_mask : 0);
+	}
+	(void)tvpro_vdec_core_checkpoint(1330, "reset_core done", vdec,
+		vdec ? vdec->core_mask : 0);
 }
 EXPORT_SYMBOL(vdec_reset_core);
 
@@ -7139,7 +7492,7 @@ static int vdec_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int vdec_remove(struct platform_device *pdev)
+static void vdec_remove(struct platform_device *pdev)
 {
 	int i;
 
@@ -7165,7 +7518,6 @@ static int vdec_remove(struct platform_device *pdev)
 
 	class_unregister(&vdec_class);
 
-	return 0;
 }
 
 static struct mconfig vdec_configs[] = {

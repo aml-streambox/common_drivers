@@ -6,7 +6,7 @@
 / {
 	model = "CoreLab A311D2-TVPro 4G";
 	amlogic-dt-id = "t7_a311d2_tvpro4g";
-	compatible = "corelab,a311d2-tvpro-4g", "corelab,a311d2-tvpro", "amlogic,a311d2", "amlogic,t7";
+	compatible = "t7_a311d2_tvpro4g", "corelab,a311d2-tvpro-4g", "corelab,a311d2-tvpro", "amlogic,a311d2", "amlogic,t7";
 
 	memory@0 {
 		reg = <0x0 0x0 0x0 0xe0000000

@@ -47,8 +47,7 @@
 #include <linux/crc32.h>
 #include "../chips/decoder_cpu_ver_info.h"
 
-#if !IS_ENABLED(CONFIG_AMLOGIC_TEE) && \
-	!IS_ENABLED(CONFIG_AMLOGIC_TEE_MODULE)
+#if !(defined(CONFIG_AMLOGIC_TEE) || defined(CONFIG_AMLOGIC_TEE_MODULE))
 static inline bool tee_enabled(void) { return false; }
 #else
 #include <linux/amlogic/tee.h>

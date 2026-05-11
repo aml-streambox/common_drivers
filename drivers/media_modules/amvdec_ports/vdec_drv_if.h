@@ -144,6 +144,8 @@ void vdec_if_deinit(struct aml_vcodec_ctx *ctx);
 int vdec_if_decode(struct aml_vcodec_ctx *ctx,
 		   struct aml_vcodec_mem *bs, bool *res_chg);
 
+bool tvpro_sfmt_checkpoint(int step, const char *name);
+
 /**
  * vdec_if_get_param() - get driver's parameter
  * @ctx	: [in] v4l2 context

@@ -38,6 +38,11 @@ const struct vdec_common_if *get_avs2_dec_comm_if(void);
 const struct vdec_common_if *get_avs3_dec_comm_if(void);
 const struct vdec_common_if *get_vc1_dec_comm_if(void);
 
+bool tvpro_sfmt_checkpoint(int step, const char *name)
+{
+	return false;
+}
+
 int vdec_if_init(struct aml_vcodec_ctx *ctx, unsigned int fourcc)
 {
 	int ret = 0;

@@ -516,7 +516,7 @@ static struct sg_table *meson_gem_prime_get_sg_table(struct drm_gem_object *obj)
 	return NULL;
 }
 
-static int meson_gem_prime_vmap(struct drm_gem_object *obj, struct dma_buf_map *map)
+static int meson_gem_prime_vmap(struct drm_gem_object *obj, struct iosys_map *map)
 {
 	struct am_meson_gem_object *meson_gem_obj = to_am_meson_gem_obj(obj);
 
@@ -529,7 +529,7 @@ static int meson_gem_prime_vmap(struct drm_gem_object *obj, struct dma_buf_map *
 	return 0;
 }
 
-static void meson_gem_prime_vunmap(struct drm_gem_object *obj, struct dma_buf_map *map)
+static void meson_gem_prime_vunmap(struct drm_gem_object *obj, struct iosys_map *map)
 {
 	DRM_DEBUG("%s nothing to do.\n", __func__);
 }

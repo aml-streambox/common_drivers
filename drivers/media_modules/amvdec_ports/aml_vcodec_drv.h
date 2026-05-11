@@ -21,6 +21,7 @@
 #define _AML_VCODEC_DRV_H_
 
 #include <linux/kref.h>
+#include <linux/vmalloc.h>
 #include <linux/platform_device.h>
 #include <linux/videodev2.h>
 #include <linux/kfifo.h>

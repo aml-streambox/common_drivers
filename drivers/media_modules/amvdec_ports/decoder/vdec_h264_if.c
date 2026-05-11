@@ -264,7 +264,7 @@ static u32 vdec_config_default_parms(u8 *parm)
 	pbuf += sprintf(pbuf, "parm_v4l_canvas_mem_mode:0;");
 	pbuf += sprintf(pbuf, "parm_v4l_canvas_mem_endian:0;");
 
-	return parm - pbuf;
+	return pbuf - parm;
 }
 
 static void vdec_parser_parms(struct vdec_h264_inst *inst)
@@ -307,9 +307,17 @@ static int vdec_h264_init(struct aml_vcodec_ctx *ctx, unsigned long *h_vdec)
 	struct vdec_h264_inst *inst = NULL;
 	int ret = -1;
 
+	extern bool tvpro_sfmt_checkpoint(int step, const char *name);
+
+	if (tvpro_sfmt_checkpoint(100, "h264 init enter"))
+		return -EAGAIN;
 	inst = vzalloc(sizeof(*inst));
 	if (!inst)
 		return -ENOMEM;
+	if (tvpro_sfmt_checkpoint(101, "h264 after inst alloc")) {
+		ret = -EAGAIN;
+		goto err;
+	}
 
 	inst->vdec.frm_name	= "H.264";
 	inst->vdec.video_type	= VFORMAT_H264;
@@ -318,17 +326,29 @@ static int vdec_h264_init(struct aml_vcodec_ctx *ctx, unsigned long *h_vdec)
 	inst->ctx		= ctx;
 
 	vdec_parser_parms(inst);
+	if (tvpro_sfmt_checkpoint(102, "h264 after parser parms")) {
+		ret = -EAGAIN;
+		goto err;
+	}
 
 	/* set play mode.*/
 	if (ctx->is_drm_mode)
 		inst->vdec.port.flag |= PORT_FLAG_DRM;
 	if (ctx->output_dma_mode)
 		inst->vdec.port.flag |= PORT_FLAG_DMABUF;
+	if (tvpro_sfmt_checkpoint(103, "h264 after play mode")) {
+		ret = -EAGAIN;
+		goto err;
+	}
 
 	/* probe info from the stream */
 	inst->vsi = vzalloc(sizeof(struct vdec_h264_vsi));
 	if (!inst->vsi) {
 		ret = -ENOMEM;
+		goto err;
+	}
+	if (tvpro_sfmt_checkpoint(104, "h264 after vsi alloc")) {
+		ret = -EAGAIN;
 		goto err;
 	}
 
@@ -338,21 +358,45 @@ static int vdec_h264_init(struct aml_vcodec_ctx *ctx, unsigned long *h_vdec)
 		ret = -ENOMEM;
 		goto err;
 	}
+	if (tvpro_sfmt_checkpoint(105, "h264 after header alloc")) {
+		ret = -EAGAIN;
+		goto err;
+	}
 
 	init_completion(&inst->comp);
+	if (tvpro_sfmt_checkpoint(106, "h264 after completion init")) {
+		ret = -EAGAIN;
+		goto err;
+	}
 
 	ctx->ada_ctx	= &inst->vdec;
 	*h_vdec		= (unsigned long)inst;
 
+	if (tvpro_sfmt_checkpoint(107, "h264 before video_decoder_init")) {
+		ret = -EAGAIN;
+		goto err;
+	}
 	ret = video_decoder_init(&inst->vdec);
+	if (tvpro_sfmt_checkpoint(108, "h264 after video_decoder_init")) {
+		ret = -EAGAIN;
+		goto err;
+	}
 	if (ret) {
 		v4l_dbg(inst->ctx, V4L_DEBUG_CODEC_ERROR,
 			"vdec_h264 init err=%d\n", ret);
 		goto err;
 	}
 
+	if (tvpro_sfmt_checkpoint(109, "h264 before success debug")) {
+		ret = -EAGAIN;
+		goto err;
+	}
 	v4l_dbg(inst->ctx, V4L_DEBUG_CODEC_PROT,
 		"H264 Instance >> %lx", (ulong) inst);
+	if (tvpro_sfmt_checkpoint(110, "h264 before return")) {
+		ret = -EAGAIN;
+		goto err;
+	}
 
 	return 0;
 err:
@@ -463,7 +507,15 @@ static void fill_vdec_params(struct vdec_h264_inst *inst, struct h264_SPS_t *sps
 	struct v4l2_rect *rect = &inst->vsi->crop;
 	int dw = inst->parms.cfg.double_write_mode;
 	int margin = inst->parms.cfg.ref_buf_margin;
+	int dpb_frames = sps->max_dec_frame_buffering;
 	u32 mb_w, mb_h, width, height;
+
+	if (dpb_frames < sps->ref_frame_count)
+		dpb_frames = sps->ref_frame_count;
+	if (dpb_frames < sps->num_reorder_frames)
+		dpb_frames = sps->num_reorder_frames;
+	if (dpb_frames < 1)
+		dpb_frames = 1;
 
 	mb_w = sps->mb_width;
 	mb_h = sps->mb_height;
@@ -490,8 +542,13 @@ static void fill_vdec_params(struct vdec_h264_inst *inst, struct h264_SPS_t *sps
 	pic->y_len_sz		= pic->coded_width * pic->coded_height;
 	pic->c_len_sz		= pic->y_len_sz >> 1;
 	pic->profile_idc	= sps->profile_idc;
+	pic->dpb_frames		= dpb_frames;
+	pic->dpb_margin		= margin;
+	pic->vpp_margin		= margin;
+	pic->field		= V4L2_FIELD_NONE;
+	pic->bitdepth		= 8;
 	/* calc DPB size */
-	dec->dpb_sz		= sps->num_reorder_frames + margin;
+	dec->dpb_sz		= dpb_frames + margin;
 
 	inst->parms.ps.visible_width	= pic->visible_width;
 	inst->parms.ps.visible_height	= pic->visible_height;
@@ -501,8 +558,15 @@ static void fill_vdec_params(struct vdec_h264_inst *inst, struct h264_SPS_t *sps
 	inst->parms.ps.mb_width		= sps->mb_width;
 	inst->parms.ps.mb_height	= sps->mb_height;
 	inst->parms.ps.ref_frames	= sps->ref_frame_count;
-	inst->parms.ps.dpb_frames	= sps->num_reorder_frames;
+	inst->parms.ps.dpb_frames	= dpb_frames;
 	inst->parms.ps.dpb_size		= dec->dpb_sz;
+	inst->parms.ps.field		= V4L2_FIELD_NONE;
+	inst->parms.ps.bitdepth		= 8;
+	inst->parms.ps.data[0]		= sps->level_idc;
+	inst->parms.ps.data[1]		= (sps->chroma_format_idc & 0x3) |
+		((sps->frame_mbs_only_flag & 0x1) << 8) |
+		((sps->num_reorder_frames & 0xff) << 16) |
+		((sps->max_dec_frame_buffering & 0xff) << 24);
 	inst->parms.parms_status	|= V4L2_CONFIG_PARM_DECODE_PSINFO;
 
 	vdec_config_dw_mode(pic, dw);
@@ -665,6 +729,7 @@ out:
 static int vdec_h264_probe(unsigned long h_vdec,
 	struct aml_vcodec_mem *bs)
 {
+	extern bool tvpro_sfmt_checkpoint(int step, const char *name);
 	struct vdec_h264_inst *inst = (struct vdec_h264_inst *)h_vdec;
 	struct aml_vdec_adapt *adapt_vdec = &inst->vdec;
 	struct aml_vcodec_ctx *ctx = inst->ctx;
@@ -672,9 +737,34 @@ static int vdec_h264_probe(unsigned long h_vdec,
 	u32 size = bs->size;
 	int ret = 0;
 
+	if (tvpro_sfmt_checkpoint(1170, "h264 probe enter"))
+		return -EAGAIN;
+
 	if (ctx->stream_mode) {
+		if (bs->model == VB2_MEMORY_MMAP) {
+			if (!ctx->param_sets_from_ucode && buf) {
+				u8 *parse_buf = buf;
+				u32 parse_size = size;
+
+				skip_aud_data(&parse_buf, &parse_size);
+				ret = parse_stream_cpu(inst, parse_buf, parse_size);
+				if (!ret) {
+					inst->vsi->cur_pic = inst->vsi->pic;
+					return 0;
+				}
+			}
+			return -EAGAIN;
+		}
+		if (tvpro_sfmt_checkpoint(1171, "h264 probe stream before aml_es_write"))
+			return -EAGAIN;
 		aml_es_write(ctx, bs->dbuf, bs->addr, size, bs->timestamp);
+		if (tvpro_sfmt_checkpoint(1172, "h264 probe stream after aml_es_write"))
+			return -EAGAIN;
+		if (tvpro_sfmt_checkpoint(1173, "h264 probe stream before write_stream_data"))
+			return -EAGAIN;
 		vdec_write_stream_data(adapt_vdec, (u32)bs->addr, size);
+		if (tvpro_sfmt_checkpoint(1174, "h264 probe stream after write_stream_data"))
+			return -EAGAIN;
 		return 0;
 	}
 
@@ -715,10 +805,15 @@ static int vdec_h264_probe(unsigned long h_vdec,
 
 static void vdec_h264_deinit(unsigned long h_vdec)
 {
+	extern bool tvpro_sfmt_checkpoint(int step, const char *name);
 	struct vdec_h264_inst *inst = (struct vdec_h264_inst *)h_vdec;
 	struct aml_vcodec_ctx *ctx = inst->ctx;
 
+	if (tvpro_sfmt_checkpoint(950, "h264 deinit before video_decoder_release"))
+		return;
 	video_decoder_release(&inst->vdec);
+	if (tvpro_sfmt_checkpoint(951, "h264 deinit after video_decoder_release"))
+		return;
 
 	if (inst->vsi && inst->vsi->header_buf)
 		vfree(inst->vsi->header_buf);
@@ -729,6 +824,7 @@ static void vdec_h264_deinit(unsigned long h_vdec)
 	vfree(inst);
 
 	ctx->drv_handle = 0;
+	tvpro_sfmt_checkpoint(952, "h264 deinit done");
 }
 
 static int vdec_write_nalu(struct vdec_h264_inst *inst,
@@ -740,11 +836,13 @@ static int vdec_write_nalu(struct vdec_h264_inst *inst,
 	int nalu_pos;
 	u32 nal_type;
 
+	(void)tvpro_sfmt_checkpoint(1140, "h264 write_nalu enter");
 	/*print_hex_debug(buf, size, 32);*/
 
 	nalu_pos = vdec_search_startcode(buf, 16);
 	if (nalu_pos < 0)
 		goto err;
+	(void)tvpro_sfmt_checkpoint(1141, "h264 write_nalu after startcode");
 
 	nal_type = AVC_NAL_TYPE(buf[nalu_pos]);
 	//v4l_dbg(inst->ctx, V4L_DEBUG_CODEC_PROT, "NALU type: %d, size: %u\n", nal_type, size);
@@ -778,7 +876,9 @@ static int vdec_write_nalu(struct vdec_h264_inst *inst,
 		inst->vsi->head_offset += inst->vsi->sei_size;
 		ret = size;
 	} else if (inst->vsi->head_offset == 0) {
+		(void)tvpro_sfmt_checkpoint(1142, "h264 write_nalu before direct vframe");
 		ret = vdec_vframe_write(vdec, buf, size, ts, 0, free);
+		(void)tvpro_sfmt_checkpoint(1143, "h264 write_nalu after direct vframe");
 	} else {
 		char *write_buf = vmalloc(inst->vsi->head_offset + size);
 		if (!write_buf) {
@@ -789,8 +889,10 @@ static int vdec_write_nalu(struct vdec_h264_inst *inst,
 		memcpy(write_buf, inst->vsi->header_buf, inst->vsi->head_offset);
 		memcpy(write_buf + inst->vsi->head_offset, buf, size);
 
+		(void)tvpro_sfmt_checkpoint(1144, "h264 write_nalu before combined vframe");
 		ret = vdec_vframe_write(vdec, write_buf,
 			inst->vsi->head_offset + size, ts, 0, free);
+		(void)tvpro_sfmt_checkpoint(1145, "h264 write_nalu after combined vframe");
 
 		memset(inst->vsi->header_buf, 0, HEADER_BUFFER_SIZE);
 		inst->vsi->head_offset = 0;
@@ -862,14 +964,38 @@ static int vdec_h264_decode(unsigned long h_vdec,
 
 	buf = (u8 *) bs->vaddr;
 	size = bs->size;
+	if (tvpro_sfmt_checkpoint(1150, "h264 decode enter"))
+		return -EAGAIN;
 
 	if (ctx->stream_mode) {
+		if (bs->model == VB2_MEMORY_MMAP) {
+			if (buf)
+				vdec_write_stream_data_vaddr(vdec,
+					(char *)buf, size, bs->timestamp);
+			else
+				vdec_write_stream_data_inner(vdec,
+					(char *)(ulong)bs->addr, size, bs->timestamp);
+			vdec_thread_wakeup(vdec);
+			return size;
+		}
+		if (tvpro_sfmt_checkpoint(1151, "h264 stream before aml_es_write"))
+			return -EAGAIN;
 		aml_es_write(ctx, bs->dbuf, bs->addr, size, bs->timestamp);
+		if (tvpro_sfmt_checkpoint(1152, "h264 stream after aml_es_write"))
+			return -EAGAIN;
+		if (tvpro_sfmt_checkpoint(1153, "h264 stream before write_stream_data"))
+			return -EAGAIN;
 		vdec_write_stream_data(vdec, (u32)bs->addr, size);
+		if (tvpro_sfmt_checkpoint(1154, "h264 stream after write_stream_data"))
+			return -EAGAIN;
 		return size;
 	}
 
+	if (tvpro_sfmt_checkpoint(1155, "h264 decode before input_full"))
+		return -EAGAIN;
 	if (vdec_input_full(vdec))
+		return -EAGAIN;
+	if (tvpro_sfmt_checkpoint(1156, "h264 decode after input_full"))
 		return -EAGAIN;
 
 	if (inst->ctx->output_dma_mode) {
@@ -887,18 +1013,22 @@ static int vdec_h264_decode(unsigned long h_vdec,
 					return 0;
 			}
 
+			(void)tvpro_sfmt_checkpoint(1161, "h264 dma before vframe_write");
 			ret = vdec_vframe_write(vdec,
 				s->data,
 				s->len,
 				bs->timestamp,
 				0,
 				vdec_vframe_input_free);
+			(void)tvpro_sfmt_checkpoint(1162, "h264 dma after vframe_write");
 		} else if (bs->model == VB2_MEMORY_DMABUF ||
 			bs->model == VB2_MEMORY_USERPTR) {
+			(void)tvpro_sfmt_checkpoint(1163, "h264 dma before vframe_write_dma");
 			ret = vdec_vframe_write_with_dma(vdec,
 				bs->addr, size, bs->timestamp,
 				BUFF_IDX(bs, bs->index),
 				vdec_vframe_input_free, inst->ctx);
+			(void)tvpro_sfmt_checkpoint(1164, "h264 dma after vframe_write_dma");
 		}
 	} else {
 		if (inst->ctx->param_sets_from_ucode) {
@@ -913,12 +1043,20 @@ static int vdec_h264_decode(unsigned long h_vdec,
 				return -1;*/
 		} else {
 			/*checked whether the resolution changes.*/
+			if (tvpro_sfmt_checkpoint(1157, "h264 decode before monitor_res_change"))
+				return -EAGAIN;
 			if ((*res_chg = monitor_res_change(inst, buf, size))) {
 				return 0;
 			}
+			if (tvpro_sfmt_checkpoint(1158, "h264 decode after monitor_res_change"))
+				return -EAGAIN;
 		}
+		if (tvpro_sfmt_checkpoint(1159, "h264 decode before write_nalu"))
+			return -EAGAIN;
 		ret = vdec_write_nalu(inst, buf, size, bs->timestamp,
 				vdec_vframe_input_free);
+		if (tvpro_sfmt_checkpoint(1160, "h264 decode after write_nalu"))
+			return -EAGAIN;
 	}
 
 	return ret;

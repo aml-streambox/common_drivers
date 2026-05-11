@@ -213,28 +213,71 @@ err_ctrls_setup:
 
 static int fops_vcodec_release(struct file *file)
 {
+	extern bool tvpro_sfmt_checkpoint(int step, const char *name);
 	struct aml_vcodec_dev *dev = video_drvdata(file);
 	struct aml_vcodec_ctx *ctx = fh_to_ctx(file->private_data);
 
+	if (tvpro_sfmt_checkpoint(900, "fops release enter"))
+		return 0;
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_BUFMGR, "release decoder %lx\n", (ulong) ctx);
 	mutex_lock(&dev->dev_mutex);
+	if (tvpro_sfmt_checkpoint(901, "fops before thread_stop"))
+		goto out_unlock;
 	aml_thread_stop(ctx);
+	if (tvpro_sfmt_checkpoint(902, "fops after thread_stop"))
+		goto out_unlock;
+	if (tvpro_sfmt_checkpoint(903, "fops before wait_vcodec_ending"))
+		goto out_unlock;
 	wait_vcodec_ending(ctx);
+	if (tvpro_sfmt_checkpoint(904, "fops after wait_vcodec_ending"))
+		goto out_unlock;
+	if (tvpro_sfmt_checkpoint(905, "fops before cap vb2 release"))
+		goto out_unlock;
 	vb2_queue_release(&ctx->m2m_ctx->cap_q_ctx.q);
+	if (tvpro_sfmt_checkpoint(906, "fops after cap vb2 release"))
+		goto out_unlock;
+	if (tvpro_sfmt_checkpoint(907, "fops before out vb2 release"))
+		goto out_unlock;
 	vb2_queue_release(&ctx->m2m_ctx->out_q_ctx.q);
+	if (tvpro_sfmt_checkpoint(908, "fops after out vb2 release"))
+		goto out_unlock;
 
 	aml_vcodec_dec_info_deinit(ctx);
+	if (tvpro_sfmt_checkpoint(909, "fops before dec_release"))
+		goto out_unlock;
 	aml_vcodec_dec_release(ctx);
+	if (tvpro_sfmt_checkpoint(910, "fops after dec_release"))
+		goto out_unlock;
+	if (tvpro_sfmt_checkpoint(911, "fops before fh_del"))
+		goto out_unlock;
 	v4l2_fh_del(&ctx->fh, file);
+	if (tvpro_sfmt_checkpoint(912, "fops after fh_del"))
+		goto out_unlock;
 	v4l2_fh_exit(&ctx->fh);
+	if (tvpro_sfmt_checkpoint(913, "fops after fh_exit"))
+		goto out_unlock;
 	v4l2_ctrl_handler_free(&ctx->ctrl_hdl);
+	if (tvpro_sfmt_checkpoint(914, "fops after ctrl free"))
+		goto out_unlock;
 
 	list_del_init(&ctx->list);
+	if (tvpro_sfmt_checkpoint(915, "fops after list_del"))
+		goto out_unlock;
 
 	aml_media_mem_free(ctx->empty_flush_buf);
+	if (tvpro_sfmt_checkpoint(916, "fops after empty buf free"))
+		goto out_unlock;
 	aml_buf_mgr_release(&ctx->bm);
+	if (tvpro_sfmt_checkpoint(917, "fops after buf_mgr_release"))
+		goto out_unlock;
 	aml_v4l_vpp_release_early(ctx);
+	if (tvpro_sfmt_checkpoint(918, "fops after vpp release early"))
+		goto out_unlock;
 	kref_put(&ctx->ctx_ref, aml_v4l_ctx_release);
+	if (tvpro_sfmt_checkpoint(919, "fops after ctx kref_put"))
+		goto out_unlock;
+
+out_unlock:
 	mutex_unlock(&dev->dev_mutex);
 	return 0;
 }
@@ -460,6 +503,20 @@ static long v4l2_vcodec_ioctl(struct file *file,
 	return ret;
 }
 
+static int fops_vcodec_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	extern bool tvpro_sfmt_checkpoint(int step, const char *name);
+	int ret;
+
+	if (tvpro_sfmt_checkpoint(1022, "mmap before m2m fop"))
+		return -EAGAIN;
+	ret = v4l2_m2m_fop_mmap(file, vma);
+	if (tvpro_sfmt_checkpoint(1023, "mmap after m2m fop"))
+		return -EAGAIN;
+
+	return ret;
+}
+
 #ifdef CONFIG_COMPAT
 static long v4l2_compat_ioctl(struct file *file,
 	unsigned int cmd, ulong arg)
@@ -480,7 +537,7 @@ static const struct v4l2_file_operations aml_vcodec_fops = {
 #ifdef CONFIG_COMPAT
 	.compat_ioctl32 = v4l2_compat_ioctl,
 #endif
-	.mmap		= v4l2_m2m_fop_mmap,
+	.mmap		= fops_vcodec_mmap,
 };
 
 static ssize_t status_show(KV_CLASS_CONST struct class *cls,
@@ -694,7 +751,7 @@ err_res:
 	return ret;
 }
 
-static int aml_vcodec_dec_remove(struct platform_device *pdev)
+static void aml_vcodec_dec_remove(struct platform_device *pdev)
 {
 	struct aml_vcodec_dev *dev = platform_get_drvdata(pdev);
 
@@ -714,8 +771,6 @@ static int aml_vcodec_dec_remove(struct platform_device *pdev)
 	aml_canvas_cache_put(dev);
 
 	dev_info(&pdev->dev, "v4ldec removed.\n");
-
-	return 0;
 }
 
 static const struct of_device_id aml_vcodec_match[] = {

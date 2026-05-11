@@ -728,5 +728,3 @@ int h264_decode_extradata_ps(u8 *buf, int size, struct h264_param_sets *ps)
 
 	return ret;
 }
-
-

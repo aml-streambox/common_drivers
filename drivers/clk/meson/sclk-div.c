@@ -108,6 +108,14 @@ static long sclk_div_round_rate(struct clk_hw *hw, unsigned long rate,
 	return DIV_ROUND_UP_ULL((u64)*prate, div);
 }
 
+static int sclk_div_determine_rate(struct clk_hw *hw,
+				   struct clk_rate_request *req)
+{
+	req->rate = sclk_div_round_rate(hw, req->rate,
+					 &req->best_parent_rate);
+	return 0;
+}
+
 static void sclk_apply_ratio(struct clk_regmap *clk,
 			     struct meson_sclk_div_data *sclk)
 {
@@ -240,7 +248,7 @@ static int sclk_div_init(struct clk_hw *hw)
 
 const struct clk_ops meson_sclk_div_ops = {
 	.recalc_rate	= sclk_div_recalc_rate,
-	.round_rate	= sclk_div_round_rate,
+	.determine_rate	= sclk_div_determine_rate,
 	.set_rate	= sclk_div_set_rate,
 	.enable		= sclk_div_enable,
 	.disable	= sclk_div_disable,

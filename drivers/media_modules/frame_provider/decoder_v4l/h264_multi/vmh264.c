@@ -8776,7 +8776,6 @@ static int vh264_hw_ctx_restore(struct vdec_h264_hw_s *hw)
 		WRITE_VREG(AV_SCRATCH_0, 0);
 		WRITE_VREG(AV_SCRATCH_9, 0);
 	}
-
 	if (hw->init_flag == 0)
 		WRITE_VREG(DPB_STATUS_REG, 0);
 	else
@@ -10936,7 +10935,7 @@ result_done:
 	}
 
 	WRITE_VREG(ASSIST_MBOX1_MASK, 0);
-	del_timer_sync(&hw->check_timer);
+	timer_delete_sync(&hw->check_timer);
 	hw->stat &= ~STAT_TIMER_ARM;
 #ifdef DETECT_WRONG_MULTI_SLICE
 	if (hw->dec_result != DEC_RESULT_AGAIN)
@@ -11113,8 +11112,9 @@ static unsigned long run_ready(struct vdec_s *vdec, unsigned long mask)
 			ret = 1;
 			dpb_print(DECODE_ID(hw), PRINT_FLAG_VDEC_DETAIL,
 				"%s, %d, is_last_buffer_with_one_field, ret:%d\n",  __func__, __LINE__, ret);
-		} else
+		} else {
 			ret = is_buffer_available(vdec);
+		}
 	}
 
 #ifdef CONSTRAIN_MAX_BUF_NUM
@@ -11573,7 +11573,7 @@ static void reset(struct vdec_s *vdec)
 	}
 
 	if (hw->stat & STAT_TIMER_ARM) {
-		del_timer_sync(&hw->check_timer);
+		timer_delete_sync(&hw->check_timer);
 		hw->stat &= ~STAT_TIMER_ARM;
 	}
 	hw->eos = 0;
@@ -12148,7 +12148,7 @@ static void vdec_fence_release(struct vdec_h264_hw_s *hw,
 	vdec_timeline_put(sync);
 }
 
-static int ammvdec_h264_remove(struct platform_device *pdev)
+static void ammvdec_h264_remove(struct platform_device *pdev)
 {
 	struct vdec_h264_hw_s *hw =
 		(struct vdec_h264_hw_s *)
@@ -12171,7 +12171,7 @@ static int ammvdec_h264_remove(struct platform_device *pdev)
 	atomic_set(&hw->vh264_active, 0);
 
 	if (hw->stat & STAT_TIMER_ARM) {
-		del_timer_sync(&hw->check_timer);
+		timer_delete_sync(&hw->check_timer);
 		hw->stat &= ~STAT_TIMER_ARM;
 	}
 
@@ -12215,7 +12215,6 @@ static int ammvdec_h264_remove(struct platform_device *pdev)
 	h264_free_hw_stru(&pdev->dev, (void *)hw);
 	clk_adj_frame_count = 0;
 
-	return 0;
 }
 
 static struct platform_driver ammvdec_h264_driver = {

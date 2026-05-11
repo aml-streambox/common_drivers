@@ -527,6 +527,14 @@ static long meson_clk_pll_round_rate(struct clk_hw *hw, unsigned long rate,
 }
 #endif
 
+static int meson_clk_pll_determine_rate(struct clk_hw *hw,
+					struct clk_rate_request *req)
+{
+	req->rate = meson_clk_pll_round_rate(hw, req->rate,
+					      &req->best_parent_rate);
+	return 0;
+}
+
 static int meson_clk_pll_wait_lock(struct clk_hw *hw)
 {
 	struct clk_regmap *clk = to_clk_regmap(hw);
@@ -778,7 +786,7 @@ retry:
  */
 const struct clk_ops meson_clk_pcie_pll_ops = {
 	.recalc_rate	= meson_clk_pll_recalc_rate,
-	.round_rate	= meson_clk_pll_round_rate,
+	.determine_rate	= meson_clk_pll_determine_rate,
 	.is_enabled	= meson_clk_pll_is_enabled,
 	.enable		= meson_clk_pcie_pll_enable,
 	.disable	= meson_clk_pll_disable
@@ -788,7 +796,7 @@ EXPORT_SYMBOL_GPL(meson_clk_pcie_pll_ops);
 const struct clk_ops meson_clk_pll_ops = {
 	.init		= meson_clk_pll_init,
 	.recalc_rate	= meson_clk_pll_recalc_rate,
-	.round_rate	= meson_clk_pll_round_rate,
+	.determine_rate	= meson_clk_pll_determine_rate,
 	.set_rate	= meson_clk_pll_set_rate,
 	.is_enabled	= meson_clk_pll_is_enabled,
 	.enable		= meson_clk_pll_enable,
@@ -875,7 +883,7 @@ static int meson_secure_pll_v2_enable(struct clk_hw *hw)
 
 const struct clk_ops meson_secure_pll_v2_ops = {
 	.recalc_rate	= meson_clk_pll_recalc_rate,
-	.round_rate	= meson_clk_pll_round_rate,
+	.determine_rate	= meson_clk_pll_determine_rate,
 	.set_rate	= meson_secure_pll_v2_set_rate,
 	.is_enabled	= meson_clk_pll_is_enabled,
 	.enable		= meson_secure_pll_v2_enable,
@@ -1039,7 +1047,7 @@ const struct clk_ops meson_clk_pll_v3_ops = {
 	 * init callback is not useful for v3 ops
 	 */
 	.recalc_rate	= meson_clk_pll_recalc_rate,
-	.round_rate	= meson_clk_pll_round_rate,
+	.determine_rate	= meson_clk_pll_determine_rate,
 	.set_rate	= meson_clk_pll_v3_set_rate,
 	.is_enabled	= meson_clk_pll_is_enabled,
 	.enable		= meson_clk_pll_v3_enable,

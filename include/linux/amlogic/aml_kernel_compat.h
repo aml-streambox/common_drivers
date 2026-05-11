@@ -16,6 +16,7 @@
 #include <linux/err.h>
 #include <linux/idr.h>
 #include <linux/iosys-map.h>
+#include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/random.h>
@@ -47,7 +48,7 @@
 #endif
 
 #ifndef ida_simple_get
-#define ida_simple_get(ida, start, end, gfp) ida_alloc_range(ida, start, (end) - 1, gfp)
+#define ida_simple_get(ida, start, end, gfp) ida_alloc_range(ida, start, (end) ? (end) - 1 : ~0U, gfp)
 #endif
 
 #ifndef ida_simple_remove
@@ -60,28 +61,6 @@
 
 #define dma_buf_map iosys_map
 #define dma_buf_map_set_vaddr iosys_map_set_vaddr
-
-static inline struct dma_heap *aml_dma_heap_find(const char *name)
-{
-	return NULL;
-}
-
-static inline struct device *aml_dma_heap_get_dev(struct dma_heap *heap)
-{
-	return NULL;
-}
-
-static inline struct dma_buf *aml_dma_heap_buffer_alloc(struct dma_heap *heap,
-								size_t len, unsigned int fd_flags,
-								unsigned int heap_flags)
-{
-	return ERR_PTR(-ENODEV);
-}
-
-#define dma_heap_find(name) aml_dma_heap_find(name)
-#define dma_heap_get_dev(heap) aml_dma_heap_get_dev(heap)
-#define dma_heap_buffer_alloc(heap, len, fd_flags, heap_flags) \
-	aml_dma_heap_buffer_alloc(heap, len, fd_flags, heap_flags)
 
 static inline int aml_sched_setscheduler(struct task_struct *p, int policy,
 						 struct sched_param *param)

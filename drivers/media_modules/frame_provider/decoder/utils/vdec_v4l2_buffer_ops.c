@@ -19,10 +19,29 @@
  */
 
 #include "vdec_v4l2_buffer_ops.h"
+#include "vdec.h"
 #include <media/v4l2-mem2mem.h>
 #include <linux/printk.h>
 #include <linux/version.h>
 
+static const char *vdec_error_type_name(u32 type)
+{
+	if (type & DECODER_WARNING_DECODER_TIMEOUT)
+		return "decoder-timeout";
+	if (type & DECODER_WARNING_DATA_ERROR)
+		return "data-error";
+	if (type & DECODER_ERROR_ALLOC_BUFFER_FAIL)
+		return "alloc-buffer-fail";
+	if (type & DECODER_ERROR_PARAM_ERROR)
+		return "param-error";
+	if (type & DECODER_EMERGENCY_NO_MEM)
+		return "no-mem";
+	if (type & DECODER_EMERGENCY_UNSUPPORT)
+		return "unsupported";
+	if (type & DECODER_EMERGENCY_FW_LOAD_ERROR)
+		return "fw-load-error";
+	return "unknown";
+}
 
 int vdec_v4l_get_pic_info(struct aml_vcodec_ctx *ctx,
 	struct vdec_pic_info *pic)
@@ -145,6 +164,12 @@ int __vdec_v4l_post_error_event(struct aml_vcodec_ctx *ctx, u32 type, struct set
 		return -EIO;
 
 	ctx->decoder_status_info.error_type |= type;
+	if (ctx->output_pix_fmt == V4L2_PIX_FMT_H264)
+		pr_info("tvpro-h264: post dec err ctx=%d type=0x%x(%s) status=0x%x caller=%s:%d %s\n",
+			ctx->id, type, vdec_error_type_name(type),
+			ctx->decoder_status_info.error_type,
+			param ? param->file : "?", param ? param->line : 0,
+			param ? param->function : "?");
 
 	ret = ctx->dec_if->set_param(ctx->drv_handle,
 		SET_PARAM_POST_EVENT, &event, param);

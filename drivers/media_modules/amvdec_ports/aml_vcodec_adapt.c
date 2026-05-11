@@ -18,6 +18,7 @@
  * Description:
  */
 #include <linux/types.h>
+#include <linux/moduleparam.h>
 #include <media/v4l2-mem2mem.h>
 #include <linux/amlogic/media/utils/amstream.h>
 #include <linux/amlogic/media/utils/vformat.h>
@@ -63,6 +64,11 @@ extern void aml_recycle_dma_buffers(struct aml_vcodec_ctx *ctx, u32 handle);
 
 static int slow_input = 0;
 
+static void tvpro_vdec_stream_dump_bytes(const char *stage, const char *addr,
+	u32 size)
+{
+}
+
 static struct stream_buf_s bufs[BUF_MAX_NUM] = {
 	{
 		.reg_base = VLD_MEM_VIFIFO_REG_BASE,
@@ -107,6 +113,7 @@ static struct stream_buf_s bufs[BUF_MAX_NUM] = {
 
 extern int aml_set_vfm_path, aml_set_vdec_type;
 extern bool aml_set_vfm_enable, aml_set_vdec_type_enable;
+extern bool tvpro_sfmt_checkpoint(int step, const char *name);
 
 static void set_default_params(struct aml_vdec_adapt *vdec)
 {
@@ -124,21 +131,48 @@ static int enable_hardware(struct stream_port_s *port)
 	if (get_cpu_type() < MESON_CPU_MAJOR_ID_M6)
 		return -1;
 
+	if (tvpro_sfmt_checkpoint(300, "enable_hardware before demux gate"))
+		return -EAGAIN;
 	amports_switch_gate("demux", 1);
-	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M8)
+	if (tvpro_sfmt_checkpoint(301, "enable_hardware after demux gate"))
+		return -EAGAIN;
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M8) {
+		if (tvpro_sfmt_checkpoint(302, "enable_hardware before parser_top gate"))
+			return -EAGAIN;
 		amports_switch_gate("parser_top", 1);
+		if (tvpro_sfmt_checkpoint(303, "enable_hardware after parser_top gate"))
+			return -EAGAIN;
+	}
 
 	if (port->type & PORT_TYPE_VIDEO) {
+		if (tvpro_sfmt_checkpoint(304, "enable_hardware before vdec gate"))
+			return -EAGAIN;
 		amports_switch_gate("vdec", 1);
+		if (tvpro_sfmt_checkpoint(305, "enable_hardware after vdec gate"))
+			return -EAGAIN;
 
 		if (has_hevc_vdec()) {
-			if (port->type & PORT_TYPE_HEVC)
+			if (port->type & PORT_TYPE_HEVC) {
+				if (tvpro_sfmt_checkpoint(306, "enable_hardware before hevc poweron"))
+					return -EAGAIN;
 				vdec_poweron(VDEC_HEVC);
-			else
+				if (tvpro_sfmt_checkpoint(307, "enable_hardware after hevc poweron"))
+					return -EAGAIN;
+			} else {
+				if (tvpro_sfmt_checkpoint(308, "enable_hardware before vdec1 poweron"))
+					return -EAGAIN;
 				vdec_poweron(VDEC_1);
+				if (tvpro_sfmt_checkpoint(309, "enable_hardware after vdec1 poweron"))
+					return -EAGAIN;
+			}
 		} else {
-			if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M8)
+			if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M8) {
+				if (tvpro_sfmt_checkpoint(310, "enable_hardware before legacy vdec1 poweron"))
+					return -EAGAIN;
 				vdec_poweron(VDEC_1);
+				if (tvpro_sfmt_checkpoint(311, "enable_hardware after legacy vdec1 poweron"))
+					return -EAGAIN;
+			}
 		}
 	}
 
@@ -185,7 +219,10 @@ static void video_component_release(struct stream_port_s *port)
 		= container_of(port, struct aml_vdec_adapt, port);
 	struct vdec_s *vdec = ada_ctx->vdec;
 
+	if (tvpro_sfmt_checkpoint(980, "video_component before vdec_release"))
+		return;
 	vdec_release(vdec);
+	tvpro_sfmt_checkpoint(981, "video_component after vdec_release");
 
 }
 
@@ -206,7 +243,11 @@ static int video_component_init(struct stream_port_s *port,
 
 	if (port->type & PORT_TYPE_FRAME ||
 		(port->type & PORT_TYPE_ES)) {
+		if (tvpro_sfmt_checkpoint(400, "video_component before vdec_init"))
+			return -EAGAIN;
 		ret = vdec_init(vdec, port->is_4k, true);
+		if (tvpro_sfmt_checkpoint(401, "video_component after vdec_init"))
+			return -EAGAIN;
 		if (ret < 0) {
 			v4l_dbg(ada_ctx->ctx, V4L_DEBUG_CODEC_ERROR, "failed\n");
 			video_component_release(port);
@@ -221,6 +262,9 @@ static int vdec_ports_release(struct stream_port_s *port)
 {
 	struct stream_buf_s *pvbuf = &bufs[BUF_TYPE_VIDEO];
 
+	if (tvpro_sfmt_checkpoint(970, "vdec_ports_release enter"))
+		return -EAGAIN;
+
 	if (has_hevc_vdec()) {
 		if (port->vformat == VFORMAT_HEVC ||
 			port->vformat == VFORMAT_VP9)
@@ -232,8 +276,13 @@ static int vdec_ports_release(struct stream_port_s *port)
 		tsdemux_release();
 	}
 
-	if (port->type & PORT_TYPE_VIDEO)
+	if (port->type & PORT_TYPE_VIDEO) {
+		if (tvpro_sfmt_checkpoint(971, "vdec_ports before video_component_release"))
+			return -EAGAIN;
 		video_component_release(port);
+		if (tvpro_sfmt_checkpoint(972, "vdec_ports after video_component_release"))
+			return -EAGAIN;
+	}
 
 	port->pcr_inited = 0;
 	port->flag = 0;
@@ -297,15 +346,23 @@ static int vdec_ports_init(struct aml_vdec_adapt *ada_ctx)
 	struct vdec_s *vdec = NULL;
 
 	/* create the vdec instance.*/
+	if (tvpro_sfmt_checkpoint(210, "vdec_ports before vdec_create"))
+		return -EAGAIN;
 	vdec = vdec_create(&ada_ctx->port, NULL);
 	if (IS_ERR_OR_NULL(vdec))
 		return -1;
+	if (tvpro_sfmt_checkpoint(211, "vdec_ports after vdec_create"))
+		return -EAGAIN;
 
 	vdec->disable_vfm = true;
 	set_vdec_property(vdec, ada_ctx);
 
 	/* init hw and gate*/
+	if (tvpro_sfmt_checkpoint(212, "vdec_ports before enable_hardware"))
+		return -EAGAIN;
 	ret = enable_hardware(vdec->port);
+	if (tvpro_sfmt_checkpoint(213, "vdec_ports after enable_hardware"))
+		return -EAGAIN;
 	if (ret < 0) {
 		v4l_dbg(ada_ctx->ctx, V4L_DEBUG_CODEC_ERROR, "enable hw fail.\n");
 		return ret;
@@ -332,14 +389,22 @@ static int vdec_ports_init(struct aml_vdec_adapt *ada_ctx)
 				return ret;
 			}
 		}
+		if (tvpro_sfmt_checkpoint(214, "vdec_ports before video_component_init"))
+			return -EAGAIN;
 		ret = video_component_init(vdec->port, pvbuf);
+		if (tvpro_sfmt_checkpoint(215, "vdec_ports after video_component_init"))
+			return -EAGAIN;
 		if (ret < 0) {
 			v4l_dbg(ada_ctx->ctx, V4L_DEBUG_CODEC_ERROR, "video_component_init  failed\n");
 			return ret;
 		}
 
 		/* connect vdec at the end after all HW initialization */
+		if (tvpro_sfmt_checkpoint(216, "vdec_ports before aml_codec_connect"))
+			return -EAGAIN;
 		aml_codec_connect(ada_ctx);
+		if (tvpro_sfmt_checkpoint(217, "vdec_ports after aml_codec_connect"))
+			return -EAGAIN;
 	}
 
 	return 0;
@@ -353,7 +418,11 @@ int video_decoder_init(struct aml_vdec_adapt *vdec)
 	set_default_params(vdec);
 
 	/* init the buffer work space and connect vdec.*/
+	if (tvpro_sfmt_checkpoint(200, "video_decoder before vdec_ports_init"))
+		return -EAGAIN;
 	ret = vdec_ports_init(vdec);
+	if (tvpro_sfmt_checkpoint(201, "video_decoder after vdec_ports_init"))
+		return -EAGAIN;
 	if (ret < 0) {
 		v4l_dbg(vdec->ctx, V4L_DEBUG_CODEC_ERROR, "vdec ports init fail.\n");
 		goto out;
@@ -367,14 +436,22 @@ int video_decoder_release(struct aml_vdec_adapt *vdec)
 	int ret = -1;
 	struct stream_port_s *port = &vdec->port;
 
+	if (tvpro_sfmt_checkpoint(960, "video_decoder_release enter"))
+		return -EAGAIN;
 	ret = vdec_ports_release(port);
+	if (tvpro_sfmt_checkpoint(961, "video_decoder_release after ports_release"))
+		return -EAGAIN;
 	if (ret < 0) {
 		v4l_dbg(vdec->ctx, V4L_DEBUG_CODEC_ERROR, "vdec ports release fail.\n");
 		goto out;
 	}
 
 	/* disable gates */
+	if (tvpro_sfmt_checkpoint(962, "video_decoder_release before disable_hardware"))
+		return -EAGAIN;
 	ret = disable_hardware(port);
+	if (tvpro_sfmt_checkpoint(963, "video_decoder_release after disable_hardware"))
+		return -EAGAIN;
 	if (ret < 0) {
 		v4l_dbg(vdec->ctx, V4L_DEBUG_CODEC_ERROR, "disable hw fail.\n");
 		goto out;
@@ -461,13 +538,25 @@ int vdec_vframe_write(struct aml_vdec_adapt *ada_ctx, const char *buf,
 	int ret = -1;
 	struct vdec_s *vdec = ada_ctx->vdec;
 
+	if (!vdec)
+		return -EINVAL;
+	if (tvpro_sfmt_checkpoint(1170, "adapt vframe before timestamp"))
+		return -EAGAIN;
 	/* set timestamp */
 	vdec_set_timestamp(vdec, timestamp);
+	if (tvpro_sfmt_checkpoint(1176, "adapt vframe after timestamp"))
+		return -EAGAIN;
 
 	/* set metadata */
 	vdec_set_metadata(vdec, meta_ptr);
+	if (tvpro_sfmt_checkpoint(1177, "adapt vframe after metadata"))
+		return -EAGAIN;
 
+	if (tvpro_sfmt_checkpoint(1171, "adapt vframe before write_vframe"))
+		return -EAGAIN;
 	ret = vdec_write_vframe(vdec, buf, count, free, ada_ctx->ctx);
+	if (tvpro_sfmt_checkpoint(1172, "adapt vframe after write_vframe"))
+		return -EAGAIN;
 
 	if (slow_input) {
 		v4l_dbg(ada_ctx->ctx, V4L_DEBUG_CODEC_PRINFO,
@@ -513,11 +602,22 @@ int vdec_vframe_write_with_dma(struct aml_vdec_adapt *ada_ctx,
 {
 	int ret = -1;
 	struct vdec_s *vdec = ada_ctx->vdec;
+
+	if (!vdec)
+		return -EINVAL;
+	if (tvpro_sfmt_checkpoint(1173, "adapt vframe_dma before timestamp"))
+		return -EAGAIN;
 	/* set timestamp */
 	vdec_set_timestamp(vdec, timestamp);
+	if (tvpro_sfmt_checkpoint(1178, "adapt vframe_dma after timestamp"))
+		return -EAGAIN;
 
+	if (tvpro_sfmt_checkpoint(1174, "adapt vframe_dma before write_vframe_dma"))
+		return -EAGAIN;
 	ret = vdec_write_vframe_with_dma(vdec, addr, count,
 		handle, free, priv);
+	if (tvpro_sfmt_checkpoint(1175, "adapt vframe_dma after write_vframe_dma"))
+		return -EAGAIN;
 
 	if (slow_input) {
 		v4l_dbg(ada_ctx->ctx, V4L_DEBUG_CODEC_PRINFO,
@@ -767,6 +867,40 @@ void vdec_write_stream_data_inner(struct aml_vdec_adapt *ada_ctx, char *addr,
 	v4l_dbg(ada_ctx->ctx, V4L_DEBUG_CODEC_INPUT,
 		"VC1 input: es(add data size %d) -> stbuf(addr 0x%lx wp 0x%x) timestamp: %llu\n",
 		size, ada_ctx->vdec->vbuf.buf_start, ada_ctx->vdec->vbuf.buf_wp, timestamp);
+}
+
+void vdec_write_stream_data_vaddr(struct aml_vdec_adapt *ada_ctx, char *addr,
+	u32 size, u64 timestamp)
+{
+	bool stbuf_around = false;
+	u32 around_size;
+	int ret;
+	struct stream_buf_s *stbuf;
+
+	if (!ada_ctx->vdec) {
+		pr_err("Err: ada_ctx->vdec is NULL\n");
+		return;
+	}
+	stbuf = &ada_ctx->vdec->vbuf;
+	if ((ada_ctx->vdec->vbuf.buf_wp + size) >
+		(ada_ctx->vdec->vbuf.buf_start + ada_ctx->vdec->vbuf.buf_size)) {
+		stbuf_around = true;
+		around_size = (ada_ctx->vdec->vbuf.buf_wp + size) -
+			(ada_ctx->vdec->vbuf.buf_start + ada_ctx->vdec->vbuf.buf_size);
+	}
+
+	stbuf->last_write_jiffies64 = jiffies_64;
+	stbuf->is_phybuf = 0;
+	tvpro_vdec_stream_dump_bytes("vaddr-write", addr, size);
+	if (!stbuf_around) {
+		ret = stbuf->ops->write(stbuf, addr, size);
+	} else {
+		ret = stbuf->ops->write(stbuf, addr, size - around_size);
+
+		if (ret > 0)
+			ret = stbuf->ops->write(stbuf,
+				addr + size - around_size, around_size);
+	}
 }
 
 #if 0

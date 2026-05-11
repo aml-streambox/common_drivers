@@ -22,8 +22,7 @@
 
 #include "../../../common/firmware/firmware_type.h"
 #include <linux/amlogic/media/utils/vformat.h>
-#if IS_ENABLED(CONFIG_AMLOGIC_TEE) || \
-	IS_ENABLED(CONFIG_AMLOGIC_TEE_MODULE)
+#if defined(CONFIG_AMLOGIC_TEE) || defined(CONFIG_AMLOGIC_TEE_MODULE)
 #include <linux/amlogic/tee.h>
 #else
 /* device ID used by tee_config_device_state() */

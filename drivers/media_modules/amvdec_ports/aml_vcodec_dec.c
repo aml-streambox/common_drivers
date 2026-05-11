@@ -33,6 +33,8 @@
 #include <linux/sched/clock.h>
 #include <linux/highmem.h>
 #include <linux/version.h>
+#include <linux/vmalloc.h>
+#include <linux/string.h>
 #include <uapi/linux/sched/types.h>
 #include <linux/amlogic/media/canvas/canvas_mgr.h>
 #include <linux/amlogic/media/codec_mm/dmabuf_manage.h>
@@ -72,6 +74,8 @@
 #endif
 
 MODULE_IMPORT_NS("DMA_BUF");
+
+extern int vdec_init_stbuf_info(struct vdec_s *vdec);
 
 #define OUT_FMT_IDX		(0) //default h264
 #define CAP_FMT_IDX		(14) //capture nv21m
@@ -420,6 +424,13 @@ static struct aml_q_data *aml_vdec_get_q_data(struct aml_vcodec_ctx *ctx,
 	return &ctx->q_data[AML_Q_DATA_DST];
 }
 
+static struct aml_vcodec_ctx *aml_vdec_file_ctx(struct file *file, void *priv)
+{
+	struct v4l2_fh *fh = priv ? priv : file->private_data;
+
+	return fh_to_ctx(fh);
+}
+
 void __aml_vdec_dispatch_event(struct aml_vcodec_ctx *ctx, u32 changes, struct set_param_info *param)
 {
 	struct v4l2_event event = {0};
@@ -696,18 +707,17 @@ static void aml_buf_configure_update(struct aml_vcodec_ctx *ctx)
 {
 	struct aml_buf_config config = {0};
 	struct vb2_queue * que = v4l2_m2m_get_dst_vq(ctx->m2m_ctx);
+	struct aml_q_data *q_data = &ctx->q_data[AML_Q_DATA_DST];
 	u32 dw = DM_YUV_ONLY;
 	u32 tw = DM_INVALID;
 
 	if (vdec_if_get_param(ctx, GET_PARAM_DW_MODE, &dw)) {
 		v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR, "invalid dw_mode\n");
-		return;
-
+		dw = DM_YUV_ONLY;
 	}
 	if (vdec_if_get_param(ctx, GET_PARAM_TW_MODE, &tw)) {
 		v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR, "invalid tw_mode\n");
-		return;
-
+		tw = DM_INVALID;
 	}
 
 	config.enable_extbuf	= true;
@@ -715,14 +725,44 @@ static void aml_buf_configure_update(struct aml_vcodec_ctx *ctx)
 	config.enable_secure	= ctx->is_drm_mode;
 	config.memory_mode	= que->memory;
 	config.planes		= V4L2_TYPE_IS_MULTIPLANAR(que->type) ? 2 : 1;
-	config.luma_length	= ctx->picinfo.y_len_sz;
-	config.chroma_length	= ctx->picinfo.c_len_sz;
-	config.luma_length_tw	= ctx->picinfo.y_len_sz_tw;
-	config.chroma_length_tw	= ctx->picinfo.c_len_sz_tw;
+	config.luma_length	= ctx->picinfo.y_len_sz ?
+		ctx->picinfo.y_len_sz : q_data->sizeimage[0];
+	config.chroma_length	= ctx->picinfo.c_len_sz ?
+		ctx->picinfo.c_len_sz : q_data->sizeimage[1];
+	config.luma_length_tw	= ctx->picinfo.y_len_sz_tw ?
+		ctx->picinfo.y_len_sz_tw : q_data->sizeimage_tw[0];
+	config.chroma_length_tw	= ctx->picinfo.c_len_sz_tw ?
+		ctx->picinfo.c_len_sz_tw : q_data->sizeimage_tw[1];
 	config.dw_mode		= dw;
 	config.tw_mode		= tw;
 
 	aml_buf_configure(&ctx->bm, &config);
+}
+
+static bool aml_vdec_synth_probe_picinfo(struct aml_vcodec_ctx *ctx)
+{
+	struct aml_q_data *src = &ctx->q_data[AML_Q_DATA_SRC];
+	struct aml_q_data *dst = &ctx->q_data[AML_Q_DATA_DST];
+	u32 width = src->coded_width ? src->coded_width : src->visible_width;
+	u32 height = src->coded_height ? src->coded_height : src->visible_height;
+
+	if (!width || !height)
+		return false;
+
+	ctx->picinfo.visible_width = src->visible_width ? src->visible_width : width;
+	ctx->picinfo.visible_height = src->visible_height ? src->visible_height : height;
+	ctx->picinfo.coded_width = width;
+	ctx->picinfo.coded_height = height;
+	ctx->picinfo.field = V4L2_FIELD_NONE;
+	ctx->picinfo.dpb_frames = ctx->picinfo.dpb_frames ?: ctx->dpb_size ?: 4;
+	ctx->picinfo.dpb_margin = ctx->picinfo.dpb_margin ?: 4;
+	ctx->picinfo.vpp_margin = ctx->picinfo.vpp_margin ?: ctx->picinfo.dpb_margin;
+	ctx->picinfo.y_len_sz = dst->sizeimage[0] ?: width * height;
+	ctx->picinfo.c_len_sz = dst->sizeimage[1] ?: ctx->picinfo.y_len_sz / 2;
+	ctx->picinfo.y_len_sz_tw = dst->sizeimage_tw[0];
+	ctx->picinfo.c_len_sz_tw = dst->sizeimage_tw[1];
+
+	return true;
 }
 
 void aml_vdec_pic_info_update(struct aml_vcodec_ctx *ctx)
@@ -1544,6 +1584,8 @@ static void aml_vdec_worker(struct work_struct *work)
 	bool res_chg = false;
 	int ret;
 
+	(void)tvpro_sfmt_checkpoint(1100, "worker enter");
+
 	if (!is_vdec_ready(ctx)) {
 		v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
 			"the decoder has not ready.\n");
@@ -1584,13 +1626,24 @@ static void aml_vdec_worker(struct work_struct *work)
 	if (ctx->stream_mode &&
 		!(ctx->output_pix_fmt == V4L2_PIX_FMT_VC1_ANNEX_G ||
 		ctx->output_pix_fmt == V4L2_PIX_FMT_VC1_ANNEX_L)) {
-		struct dmabuf_dmx_sec_es_data *es_data = (struct dmabuf_dmx_sec_es_data *)aml_vb->dma_buf;
 		int offset = vb->planes[0].data_offset;
-		buf.addr = es_data->data_start + offset;
+
 		buf.size = vb->planes[0].bytesused - offset;
 		buf.dbuf = vb->planes[0].dbuf;
-		v4l_dbg(ctx, V4L_DEBUG_CODEC_INPUT, "stream update wp 0x%lx + sz 0x%x offset 0x%x ori start 0x%x ts %llu\n",
-			buf.addr, buf.size, offset, es_data->data_start, vb->timestamp);
+
+		if (aml_vb->dma_buf) {
+			struct dmabuf_dmx_sec_es_data *es_data =
+				(struct dmabuf_dmx_sec_es_data *)aml_vb->dma_buf;
+
+			buf.addr = es_data->data_start + offset;
+			v4l_dbg(ctx, V4L_DEBUG_CODEC_INPUT,
+				"stream update wp 0x%lx + sz 0x%x offset 0x%x ori start 0x%x ts %llu\n",
+				buf.addr, buf.size, offset, es_data->data_start,
+				vb->timestamp);
+		} else {
+			buf.addr = aml_vb->addr ? aml_vb->addr :
+				sg_dma_address(aml_vb->out_sgt->sgl);
+		}
 	} else {
 		buf.addr	= aml_vb->addr ? aml_vb->addr : sg_dma_address(aml_vb->out_sgt->sgl);
 		buf.size	= vb->planes[0].bytesused;
@@ -1626,7 +1679,9 @@ static void aml_vdec_worker(struct work_struct *work)
 
 	vdec_tracing(&ctx->vtr, VTRACE_V4L_ST_1, vdec_frame_number(ctx->ada_ctx));
 
+	(void)tvpro_sfmt_checkpoint(1101, "worker before vdec_if_decode");
 	ret = vdec_if_decode(ctx, &buf, &res_chg);
+	(void)tvpro_sfmt_checkpoint(1102, "worker after vdec_if_decode");
 	if (ret > 0) {
 		v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
 
@@ -1653,7 +1708,9 @@ static void aml_vdec_worker(struct work_struct *work)
 		vdec_tracing(&ctx->vtr, VTRACE_V4L_ES_11, buf.size);
 	}
 out:
+	(void)tvpro_sfmt_checkpoint(1103, "worker before job_finish");
 	v4l2_m2m_job_finish(dev->m2m_dev_dec, ctx->m2m_ctx);
+	(void)tvpro_sfmt_checkpoint(1104, "worker after job_finish");
 }
 
 static void aml_vdec_reset(struct aml_vcodec_ctx *ctx)
@@ -1839,7 +1896,7 @@ EXPORT_SYMBOL_GPL(aml_thread_stop);
 static int vidioc_try_decoder_cmd(struct file *file, void *priv,
 				struct v4l2_decoder_cmd *cmd)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
 		"%s, cmd: %u\n", __func__, cmd->cmd);
@@ -1873,7 +1930,7 @@ static int vidioc_try_decoder_cmd(struct file *file, void *priv,
 static int vidioc_decoder_cmd(struct file *file, void *priv,
 				struct v4l2_decoder_cmd *cmd)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 	struct vb2_queue *src_vq, *dst_vq;
 	int ret;
 
@@ -2247,6 +2304,7 @@ static int vidioc_decoder_streamon(struct file *file, void *priv,
 	struct v4l2_fh *fh = file->private_data;
 	struct aml_vcodec_ctx *ctx = fh_to_ctx(fh);
 	struct vb2_queue *q;
+	int ret;
 
 	q = v4l2_m2m_get_vq(fh->m2m_ctx, i);
 	if (!V4L2_TYPE_IS_OUTPUT(q->type) &&
@@ -2327,7 +2385,11 @@ static int vidioc_decoder_streamon(struct file *file, void *priv,
 	} else {
 		ctx->is_out_stream_off = false;
 		ctx->es_wkr_stop = false;
+		if (tvpro_sfmt_checkpoint(990, "streamon before aml_codec_connect"))
+			return -EAGAIN;
 		aml_codec_connect(ctx->ada_ctx); /* for seek */
+		if (tvpro_sfmt_checkpoint(991, "streamon after aml_codec_connect"))
+			return -EAGAIN;
 
 #ifdef CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_DOLBYVISION
 		if (ctx->dv_id < 0) {
@@ -2344,7 +2406,13 @@ static int vidioc_decoder_streamon(struct file *file, void *priv,
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
 		"%s, type: %d\n", __func__, q->type);
 
-	return v4l2_m2m_ioctl_streamon(file, priv, i);
+	if (tvpro_sfmt_checkpoint(1000, "streamon before m2m ioctl"))
+		return -EAGAIN;
+	ret = v4l2_m2m_ioctl_streamon(file, priv, i);
+	if (tvpro_sfmt_checkpoint(1001, "streamon after m2m ioctl"))
+		return -EAGAIN;
+
+	return ret;
 }
 
 static int vidioc_decoder_streamoff(struct file *file, void *priv,
@@ -2383,11 +2451,16 @@ static int vidioc_decoder_streamoff(struct file *file, void *priv,
 static int vidioc_decoder_reqbufs(struct file *file, void *priv,
 	struct v4l2_requestbuffers *rb)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 	struct v4l2_fh *fh = file->private_data;
 	struct vb2_queue *q;
+	int ret;
 
+	if (tvpro_sfmt_checkpoint(1008, "reqbufs enter"))
+		return -EAGAIN;
 	q = v4l2_m2m_get_vq(fh->m2m_ctx, rb->type);
+	if (tvpro_sfmt_checkpoint(1009, "reqbufs after get queue"))
+		return -EAGAIN;
 
 	if (!rb->count) {
 		if (!V4L2_TYPE_IS_OUTPUT(rb->type)) {
@@ -2436,29 +2509,49 @@ static int vidioc_decoder_reqbufs(struct file *file, void *priv,
 			"output buffer memory mode is %d\n", rb->memory);
 	}
 
-	return v4l2_m2m_ioctl_reqbufs(file, priv, rb);
+	if (tvpro_sfmt_checkpoint(1010, "reqbufs before m2m ioctl"))
+		return -EAGAIN;
+	ret = v4l2_m2m_ioctl_reqbufs(file, priv, rb);
+	if (tvpro_sfmt_checkpoint(1011, "reqbufs after m2m ioctl"))
+		return -EAGAIN;
+
+	return ret;
 }
 
 static int vidioc_vdec_querybuf(struct file *file, void *priv,
 	struct v4l2_buffer *buf)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
+	int ret;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
 		"%s, type: %d\n", __func__, buf->type);
 
-	return v4l2_m2m_ioctl_querybuf(file, priv, buf);
+	if (tvpro_sfmt_checkpoint(1012, "querybuf before m2m ioctl"))
+		return -EAGAIN;
+	ret = v4l2_m2m_ioctl_querybuf(file, priv, buf);
+	if (tvpro_sfmt_checkpoint(1013, "querybuf after m2m ioctl"))
+		return -EAGAIN;
+
+	return ret;
 }
 
 static int vidioc_vdec_expbuf(struct file *file, void *priv,
 	struct v4l2_exportbuffer *eb)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
+	int ret;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
 		"%s, type: %d\n", __func__, eb->type);
 
-	return v4l2_m2m_ioctl_expbuf(file, priv, eb);
+	if (tvpro_sfmt_checkpoint(1014, "expbuf before m2m ioctl"))
+		return -EAGAIN;
+	ret = v4l2_m2m_ioctl_expbuf(file, priv, eb);
+	if (tvpro_sfmt_checkpoint(1015, "expbuf after m2m ioctl"))
+		return -EAGAIN;
+
+	return ret;
 }
 
 static bool is_turn_around(struct aml_es_ref_elem *elem)
@@ -2697,21 +2790,55 @@ out:
 
 void aml_vcodec_dec_release(struct aml_vcodec_ctx *ctx)
 {
+	extern bool tvpro_sfmt_checkpoint(int step, const char *name);
 	ulong flags;
+
+	if (tvpro_sfmt_checkpoint(930, "dec_release enter"))
+		return;
 	if (ctx->capture_memory_mode == VB2_MEMORY_MMAP) {
+		if (tvpro_sfmt_checkpoint(934, "dec_release before clean_proxy_uvm"))
+			return;
 		v4l_dbg(ctx, V4L_DEBUG_CODEC_BUFMGR,"clean proxy uvm\n");
 		aml_clean_proxy_uvm(ctx);
-	} else
+		if (tvpro_sfmt_checkpoint(935, "dec_release after clean_proxy_uvm"))
+			return;
+	} else {
+		if (tvpro_sfmt_checkpoint(936, "dec_release before buf put dma"))
+			return;
 		aml_buf_put_dma(&ctx->bm);
+		if (tvpro_sfmt_checkpoint(937, "dec_release after buf put dma"))
+			return;
+	}
+	if (tvpro_sfmt_checkpoint(931, "dec_release after buffer release"))
+		return;
 
+	if (tvpro_sfmt_checkpoint(938, "dec_release before abort lock"))
+		return;
 	flags = aml_vcodec_ctx_lock(ctx);
+	if (tvpro_sfmt_checkpoint(939, "dec_release after abort lock")) {
+		aml_vcodec_ctx_unlock(ctx, flags);
+		return;
+	}
 	ctx->state = AML_STATE_ABORT;
+	if (tvpro_sfmt_checkpoint(942, "dec_release after state abort")) {
+		aml_vcodec_ctx_unlock(ctx, flags);
+		return;
+	}
 	vdec_tracing(&ctx->vtr, VTRACE_V4L_ST_0, ctx->state);
+	if (tvpro_sfmt_checkpoint(943, "dec_release after abort trace")) {
+		aml_vcodec_ctx_unlock(ctx, flags);
+		return;
+	}
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_STATE,
 		"vcodec state (AML_STATE_ABORT)\n");
 	aml_vcodec_ctx_unlock(ctx, flags);
+	if (tvpro_sfmt_checkpoint(944, "dec_release after abort unlock"))
+		return;
 
+	if (tvpro_sfmt_checkpoint(932, "dec_release before if_deinit"))
+		return;
 	vdec_if_deinit(ctx);
+	tvpro_sfmt_checkpoint(933, "dec_release after if_deinit");
 }
 
 void aml_vcodec_dec_set_default_params(struct aml_vcodec_ctx *ctx)
@@ -2793,7 +2920,7 @@ void aml_vdec_wake_up(struct aml_vcodec_ctx *ctx)
 static int vidioc_vdec_qbuf(struct file *file, void *priv,
 	struct v4l2_buffer *buf)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 	int ret;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
@@ -2806,7 +2933,25 @@ static int vidioc_vdec_qbuf(struct file *file, void *priv,
 		return -EIO;
 	}
 
+	if (V4L2_TYPE_IS_OUTPUT(buf->type)) {
+		if (tvpro_sfmt_checkpoint(1040, "qbuf output before m2m qbuf"))
+			return -EAGAIN;
+	} else {
+		if (tvpro_sfmt_checkpoint(1042, "qbuf capture before m2m qbuf"))
+			return -EAGAIN;
+	}
+	if (tvpro_sfmt_checkpoint(1020, "qbuf before m2m qbuf"))
+		return -EAGAIN;
 	ret = v4l2_m2m_qbuf(file, ctx->m2m_ctx, buf);
+	if (V4L2_TYPE_IS_OUTPUT(buf->type)) {
+		if (tvpro_sfmt_checkpoint(1041, "qbuf output after m2m qbuf"))
+			return -EAGAIN;
+	} else {
+		if (tvpro_sfmt_checkpoint(1043, "qbuf capture after m2m qbuf"))
+			return -EAGAIN;
+	}
+	if (tvpro_sfmt_checkpoint(1021, "qbuf after m2m qbuf"))
+		return -EAGAIN;
 
 	if (V4L2_TYPE_IS_OUTPUT(buf->type)) {
 		if (V4L2_TYPE_IS_MULTIPLANAR(buf->type)) {
@@ -2835,7 +2980,7 @@ static int vidioc_vdec_qbuf(struct file *file, void *priv,
 static int vidioc_vdec_dqbuf(struct file *file, void *priv,
 	struct v4l2_buffer *buf)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 	int ret;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
@@ -2849,7 +2994,9 @@ static int vidioc_vdec_dqbuf(struct file *file, void *priv,
 			return -EIO;
 	}
 
+	(void)tvpro_sfmt_checkpoint(1030, "dqbuf before m2m dqbuf");
 	ret = v4l2_m2m_dqbuf(file, ctx->m2m_ctx, buf);
+	(void)tvpro_sfmt_checkpoint(1031, "dqbuf after m2m dqbuf");
 
 	if (V4L2_TYPE_IS_OUTPUT(buf->type)) {
 		if (V4L2_TYPE_IS_MULTIPLANAR(buf->type)) {
@@ -2878,12 +3025,12 @@ static int vidioc_vdec_dqbuf(struct file *file, void *priv,
 static int vidioc_vdec_querycap(struct file *file, void *priv,
 	struct v4l2_capability *cap)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 	struct video_device *vfd_dec = video_devdata(file);
 
-	strlcpy(cap->driver, AML_VCODEC_DEC_NAME, sizeof(cap->driver));
-	strlcpy(cap->bus_info, AML_PLATFORM_STR, sizeof(cap->bus_info));
-	strlcpy(cap->card, AML_PLATFORM_STR, sizeof(cap->card));
+	strscpy(cap->driver, AML_VCODEC_DEC_NAME, sizeof(cap->driver));
+	strscpy(cap->bus_info, AML_PLATFORM_STR, sizeof(cap->bus_info));
+	strscpy(cap->card, AML_PLATFORM_STR, sizeof(cap->card));
 	cap->device_caps = vfd_dec->device_caps;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT, "%s, %s\n", __func__, cap->card);
@@ -3020,7 +3167,7 @@ static int vidioc_try_fmt_vid_cap_out(struct file *file, void *priv,
 	struct v4l2_pix_format *pix = &f->fmt.pix;
 	struct aml_q_data *q_data = NULL;
 	struct aml_video_fmt *fmt = NULL;
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 	struct vb2_queue *dst_vq;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
@@ -3082,7 +3229,7 @@ static int vidioc_try_fmt_vid_cap_out(struct file *file, void *priv,
 static int vidioc_vdec_g_selection(struct file *file, void *priv,
 	struct v4l2_selection *s)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 	struct aml_q_data *q_data;
 	int ratio = 1;
 
@@ -3157,7 +3304,7 @@ static int vidioc_vdec_g_selection(struct file *file, void *priv,
 static int vidioc_vdec_s_selection(struct file *file, void *priv,
 	struct v4l2_selection *s)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 	int ratio = 1;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT, "%s, type: %d\n",
@@ -3348,7 +3495,7 @@ static int vidioc_vdec_s_fmt(struct file *file, void *priv,
 	struct v4l2_format *f)
 {
 	int ret = 0;
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 	struct v4l2_pix_format *pix = &f->fmt.pix;
 	struct aml_q_data *q_data = NULL;
@@ -3360,6 +3507,8 @@ static int vidioc_vdec_s_fmt(struct file *file, void *priv,
 			"ctx is NULL\n");
 		return -1;
 	}
+	if (tvpro_sfmt_checkpoint(500, "s_fmt enter"))
+		return -EAGAIN;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
 		"%s, type: %u, planes: %u, fmt: %x\n",
@@ -3407,6 +3556,8 @@ static int vidioc_vdec_s_fmt(struct file *file, void *priv,
 
 	q_data->fmt = fmt;
 	vidioc_try_fmt(ctx, f, q_data->fmt);
+	if (tvpro_sfmt_checkpoint(501, "s_fmt after try_fmt"))
+		return -EAGAIN;
 
 	if (V4L2_TYPE_IS_OUTPUT(f->type) && ctx->drv_handle && ctx->receive_cmd_stop) {
 		ctx->state = AML_STATE_IDLE;
@@ -3435,7 +3586,15 @@ static int vidioc_vdec_s_fmt(struct file *file, void *priv,
 
 		mutex_lock(&ctx->state_lock);
 		if (ctx->state == AML_STATE_IDLE) {
+			if (tvpro_sfmt_checkpoint(502, "s_fmt output_mplane before vdec_if_init")) {
+				mutex_unlock(&ctx->state_lock);
+				return -EAGAIN;
+			}
 			ret = vdec_if_init(ctx, q_data->fmt->fourcc);
+			if (tvpro_sfmt_checkpoint(503, "s_fmt output_mplane after vdec_if_init")) {
+				mutex_unlock(&ctx->state_lock);
+				return -EAGAIN;
+			}
 			if (ret) {
 				v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
 					"vdec_if_init() fail ret=%d\n", ret);
@@ -3443,7 +3602,15 @@ static int vidioc_vdec_s_fmt(struct file *file, void *priv,
 				return -EINVAL;
 			}
 
+			if (tvpro_sfmt_checkpoint(504, "s_fmt output_mplane before trace_init")) {
+				mutex_unlock(&ctx->state_lock);
+				return -EAGAIN;
+			}
 			vdec_trace_init(&ctx->vtr, ctx->id, vdec_get_vdec_id(ctx->ada_ctx));
+			if (tvpro_sfmt_checkpoint(505, "s_fmt output_mplane after trace_init")) {
+				mutex_unlock(&ctx->state_lock);
+				return -EAGAIN;
+			}
 
 			ctx->state = AML_STATE_INIT;
 			vdec_tracing(&ctx->vtr, VTRACE_V4L_ST_0, ctx->state);
@@ -3475,7 +3642,15 @@ static int vidioc_vdec_s_fmt(struct file *file, void *priv,
 
 		mutex_lock(&ctx->state_lock);
 		if (ctx->state == AML_STATE_IDLE) {
+			if (tvpro_sfmt_checkpoint(520, "s_fmt output before vdec_if_init")) {
+				mutex_unlock(&ctx->state_lock);
+				return -EAGAIN;
+			}
 			ret = vdec_if_init(ctx, q_data->fmt->fourcc);
+			if (tvpro_sfmt_checkpoint(521, "s_fmt output after vdec_if_init")) {
+				mutex_unlock(&ctx->state_lock);
+				return -EAGAIN;
+			}
 			if (ret) {
 				v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
 					"vdec_if_init() fail ret=%d\n", ret);
@@ -3483,7 +3658,15 @@ static int vidioc_vdec_s_fmt(struct file *file, void *priv,
 				return -EINVAL;
 			}
 
+			if (tvpro_sfmt_checkpoint(522, "s_fmt output before trace_init")) {
+				mutex_unlock(&ctx->state_lock);
+				return -EAGAIN;
+			}
 			vdec_trace_init(&ctx->vtr, ctx->id, vdec_get_vdec_id(ctx->ada_ctx));
+			if (tvpro_sfmt_checkpoint(523, "s_fmt output after trace_init")) {
+				mutex_unlock(&ctx->state_lock);
+				return -EAGAIN;
+			}
 
 			ctx->state = AML_STATE_INIT;
 			vdec_tracing(&ctx->vtr, VTRACE_V4L_ST_0, ctx->state);
@@ -3494,13 +3677,22 @@ static int vidioc_vdec_s_fmt(struct file *file, void *priv,
 	}
 
 	if (!V4L2_TYPE_IS_OUTPUT(f->type)) {
+		if (tvpro_sfmt_checkpoint(530, "s_fmt capture before dimension copy"))
+			return -EAGAIN;
 		ctx->cap_pix_fmt = V4L2_TYPE_IS_MULTIPLANAR(f->type) ?
 			pix_mp->pixelformat : pix->pixelformat;
 		if (ctx->state >= AML_STATE_PROBE) {
 			update_ctx_dimension(ctx, f->type);
 			copy_v4l2_format_dimension(ctx, pix_mp, pix, q_data, f->type);
 		}
+		if (ctx->drv_handle)
+			aml_buf_configure_update(ctx);
+		if (tvpro_sfmt_checkpoint(531, "s_fmt capture after dimension copy"))
+			return -EAGAIN;
 	}
+
+	if (tvpro_sfmt_checkpoint(540, "s_fmt before return"))
+		return -EAGAIN;
 
 	return 0;
 }
@@ -3509,7 +3701,7 @@ static int vidioc_enum_framesizes(struct file *file, void *priv,
 				struct v4l2_frmsizeenum *fsize)
 {
 	int i = 0;
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT, "%s, idx: %d, pix fmt: %x\n",
 		__func__, fsize->index, fsize->pixel_format);
@@ -3587,7 +3779,7 @@ static int vidioc_enum_fmt(struct v4l2_fmtdesc *f, bool output_queue)
 static int vidioc_vdec_enum_fmt_vid_cap_mplane(struct file *file,
 	void *priv, struct v4l2_fmtdesc *f)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT, "%s\n", __func__);
 
@@ -3597,7 +3789,7 @@ static int vidioc_vdec_enum_fmt_vid_cap_mplane(struct file *file,
 static int vidioc_vdec_enum_fmt_vid_out_mplane(struct file *file,
 	void *priv, struct v4l2_fmtdesc *f)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT, "%s\n", __func__);
 
@@ -3607,7 +3799,7 @@ static int vidioc_vdec_enum_fmt_vid_out_mplane(struct file *file,
 static int vidioc_vdec_g_fmt(struct file *file, void *priv,
 	struct v4l2_format *f)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 	struct v4l2_pix_format *pix = &f->fmt.pix;
 	struct vb2_queue *vq;
@@ -3633,6 +3825,39 @@ static int vidioc_vdec_g_fmt(struct file *file, void *priv,
 		return -EINVAL;
 
 	q_data = aml_vdec_get_q_data(ctx, f->type);
+	if (!ctx->drv_handle) {
+		if (V4L2_TYPE_IS_MULTIPLANAR(f->type)) {
+			pix_mp->width = q_data->coded_width;
+			pix_mp->height = q_data->coded_height;
+			pix_mp->num_planes = q_data->fmt->num_planes;
+			pix_mp->pixelformat = q_data->fmt->fourcc;
+			pix_mp->field = V4L2_FIELD_NONE;
+			pix_mp->colorspace = ctx->colorspace;
+			pix_mp->ycbcr_enc = ctx->ycbcr_enc;
+			pix_mp->quantization = ctx->quantization;
+			pix_mp->xfer_func = ctx->xfer_func;
+			for (ret = 0; ret < q_data->fmt->num_planes; ret++) {
+				pix_mp->plane_fmt[ret].bytesperline = q_data->bytesperline[ret];
+				pix_mp->plane_fmt[ret].sizeimage = q_data->sizeimage[ret];
+			}
+		} else {
+			pix->width = q_data->coded_width;
+			pix->height = q_data->coded_height;
+			pix->pixelformat = q_data->fmt->fourcc;
+			pix->field = V4L2_FIELD_NONE;
+			pix->colorspace = ctx->colorspace;
+			pix->ycbcr_enc = ctx->ycbcr_enc;
+			pix->quantization = ctx->quantization;
+			pix->xfer_func = ctx->xfer_func;
+			pix->bytesperline = q_data->bytesperline[0];
+			pix->sizeimage = q_data->sizeimage[0] + q_data->sizeimage[1];
+		}
+
+		v4l_dbg(ctx, V4L_DEBUG_CODEC_EXINFO,
+			"type=%d Format information returned from defaults before decoder init\n",
+			f->type);
+		return 0;
+	}
 
 	ret = vdec_if_get_param(ctx, GET_PARAM_PIC_INFO, &ctx->picinfo);
 	if (ret) {
@@ -3696,7 +3921,7 @@ static int vidioc_vdec_g_fmt(struct file *file, void *priv,
 static int vidioc_vdec_create_bufs(struct file *file, void *priv,
 	struct v4l2_create_buffers *create)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(priv);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, priv);
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
 		"%s, type: %u, count: %u\n",
@@ -4308,11 +4533,16 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 	struct aml_buf_config config;
 	u32 dw = DM_YUV_ONLY;
 	u32 tw = DM_INVALID;
+	bool synth_picinfo = false;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
 		"%s, type: %d, vb: %lx, idx: %d, state: %d, used: %d, ts: %llu, uvm dbuf: %px\n",
 		__func__, vb->vb2_queue->type, (ulong) vb,
 		vb->index, vb->state, buf->used, vb->timestamp, vb->planes[0].dbuf);
+	if (V4L2_TYPE_IS_OUTPUT(vb->vb2_queue->type))
+		(void)tvpro_sfmt_checkpoint(1050, "buf_queue output enter");
+	else
+		(void)tvpro_sfmt_checkpoint(1051, "buf_queue capture enter");
 
 	/*
 	 * check if this buffer is ready to be used after decode
@@ -4320,6 +4550,11 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 	if (!V4L2_TYPE_IS_OUTPUT(vb->vb2_queue->type)) {
 		struct aml_buf *aml_buf = buf->aml_buf;
 		struct vframe_s *vf;
+
+		if (!aml_buf) {
+			v4l2_buff_done(vb2_v4l2, VB2_BUF_STATE_ERROR);
+			return;
+		}
 
 		if (aml_buf->vb != vb) {
 			v4l_dbg(ctx, V4L_DEBUG_CODEC_BUFMGR,
@@ -4404,18 +4639,26 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 	if (ctx->stream_mode &&
 		!(ctx->output_pix_fmt == V4L2_PIX_FMT_VC1_ANNEX_G ||
 		ctx->output_pix_fmt == V4L2_PIX_FMT_VC1_ANNEX_L)) {
-		struct dmabuf_dmx_sec_es_data *es_data;
+		struct dmabuf_dmx_sec_es_data *es_data = NULL;
 
-		if (dmabuf_manage_get_type(vb->planes[0].dbuf) != DMA_BUF_TYPE_DMX_ES) {
+		if (vb->planes[0].dbuf &&
+			dmabuf_manage_get_type(vb->planes[0].dbuf) == DMA_BUF_TYPE_DMX_ES) {
+			es_data = (struct dmabuf_dmx_sec_es_data *)dmabuf_manage_get_info(vb->planes[0].dbuf,
+				DMA_BUF_TYPE_DMX_ES);
+			buf->dma_buf = (void *)es_data;
+		} else if (vb->memory == VB2_MEMORY_MMAP) {
+			buf->dma_buf = NULL;
+		} else {
 			pr_err("not DMA_BUF_TYPE_DMX_ES\n");
 			return;
 		}
-		es_data = (struct dmabuf_dmx_sec_es_data *)dmabuf_manage_get_info(vb->planes[0].dbuf, DMA_BUF_TYPE_DMX_ES);
-		buf->dma_buf = (void *)es_data;
 	}
+	(void)tvpro_sfmt_checkpoint(1052, "buf_queue output before m2m queue");
 	v4l2_m2m_buf_queue(ctx->m2m_ctx, to_vb2_v4l2_buffer(vb));
+	(void)tvpro_sfmt_checkpoint(1053, "buf_queue output after m2m queue");
 
 	if (ctx->state != AML_STATE_INIT) {
+		(void)tvpro_sfmt_checkpoint(1054, "buf_queue output state not init");
 		return;
 	}
 
@@ -4435,18 +4678,37 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 		ctx->output_pix_fmt == V4L2_PIX_FMT_VC1_ANNEX_L)) {
 		struct dmabuf_dmx_sec_es_data *es_data = (struct dmabuf_dmx_sec_es_data *)buf->dma_buf;
 		int offset = vb->planes[0].data_offset;
-		if (ctx->set_ext_buf_flg == false) {
-			v4l2_set_ext_buf_addr(ctx->ada_ctx, es_data, offset);
-			ctx->es_free = aml_es_input_free;
-			ctx->set_ext_buf_flg = true;
-		}
 
-		src_mem.addr = es_data->data_start + offset;
 		src_mem.size = vb->planes[0].bytesused - offset;
 		src_mem.dbuf = vb->planes[0].dbuf;
 
-		v4l_dbg(ctx, V4L_DEBUG_CODEC_INPUT, "update wp 0x%lx + sz 0x%x offset 0x%x ori start 0x%x pts %llu\n",
-			src_mem.addr, src_mem.size, offset, es_data->data_start, vb->timestamp);
+		if (es_data) {
+			if (ctx->set_ext_buf_flg == false) {
+				v4l2_set_ext_buf_addr(ctx->ada_ctx, es_data, offset);
+				ctx->es_free = aml_es_input_free;
+				ctx->set_ext_buf_flg = true;
+			}
+
+			src_mem.addr = es_data->data_start + offset;
+			v4l_dbg(ctx, V4L_DEBUG_CODEC_INPUT,
+				"update wp 0x%lx + sz 0x%x offset 0x%x ori start 0x%x pts %llu\n",
+				src_mem.addr, src_mem.size, offset,
+				es_data->data_start, vb->timestamp);
+		} else {
+			if (ctx->set_ext_buf_flg == false) {
+				int ret = vdec_init_stbuf_info(ctx->ada_ctx->vdec);
+
+				if (ret) {
+					v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
+						"stream mmap stbuf init failed ret=%d\n", ret);
+					return;
+				}
+				ctx->set_ext_buf_flg = true;
+			}
+
+			src_mem.addr = buf->addr ? buf->addr :
+				sg_dma_address(buf->out_sgt->sgl);
+		}
 
 	} else {
 		src_mem.addr	= buf->addr ? buf->addr :
@@ -4461,16 +4723,25 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 	src_mem.timestamp = vb->timestamp;
 	src_mem.meta_ptr = (ulong)buf->meta_data;
 
+	(void)tvpro_sfmt_checkpoint(1055, "buf_queue output before vdec_if_probe");
 	if (vdec_if_probe(ctx, &src_mem)) {
-		v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
+		(void)tvpro_sfmt_checkpoint(1056, "buf_queue output probe failed");
+		if (ctx->output_pix_fmt == V4L2_PIX_FMT_H264 &&
+		    aml_vdec_synth_probe_picinfo(ctx)) {
+			synth_picinfo = true;
+		} else {
+			v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
 
-		/* frame mode and non-dbuf mode. */
-		if (ctx->stream_mode || !ctx->output_dma_mode) {
-			v4l2_buff_done(to_vb2_v4l2_buffer(vb),
-				VB2_BUF_STATE_DONE);
+			/* frame mode and non-dbuf mode. */
+			if (ctx->stream_mode || !ctx->output_dma_mode) {
+				v4l2_buff_done(to_vb2_v4l2_buffer(vb),
+					VB2_BUF_STATE_DONE);
+			}
+
+			return;
 		}
-
-		return;
+	} else {
+		(void)tvpro_sfmt_checkpoint(1057, "buf_queue output after vdec_if_probe");
 	}
 
 	/*
@@ -4485,21 +4756,23 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 			VB2_BUF_STATE_DONE);
 	}
 
-	if (vdec_if_get_param(ctx, GET_PARAM_PIC_INFO, &ctx->picinfo)) {
+	(void)tvpro_sfmt_checkpoint(1058, "buf_queue output before pic info");
+	if (!synth_picinfo && vdec_if_get_param(ctx, GET_PARAM_PIC_INFO, &ctx->picinfo)) {
 		v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
 			"GET_PARAM_PICTURE_INFO err\n");
 		return;
 	}
+	(void)tvpro_sfmt_checkpoint(1059, "buf_queue output after pic info");
 
 	if (vdec_if_get_param(ctx, GET_PARAM_DW_MODE, &dw)) {
 		v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR, "invalid dw_mode\n");
-		return;
+		dw = DM_YUV_ONLY;
 
 	}
 
 	if (vdec_if_get_param(ctx, GET_PARAM_TW_MODE, &tw)) {
 		v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR, "invalid tw_mode\n");
-		return;
+		tw = DM_INVALID;
 
 	}
 
@@ -4629,6 +4902,11 @@ static int vb2ops_vdec_buf_init(struct vb2_buffer *vb)
 
 		ret = aml_buf_attach(&ctx->bm, key,
 			vb2_dma_contig_plane_dma_addr(vb, 0), vb);
+		if (!ret && !buf->aml_buf && ctx->drv_handle) {
+			aml_buf_configure_update(ctx);
+			ret = aml_buf_attach(&ctx->bm, key,
+				vb2_dma_contig_plane_dma_addr(vb, 0), vb);
+		}
 		if (ret) {
 			v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
 				"aml_buf_attach fail!\n");
@@ -4682,6 +4960,8 @@ static int vb2ops_vdec_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct aml_vcodec_ctx *ctx = vb2_get_drv_priv(q);
 
+	if (tvpro_sfmt_checkpoint(1180, "start_streaming enter"))
+		return -EAGAIN;
 	ctx->has_receive_eos = false;
 	ctx->v4l_resolution_change = false;
 
@@ -4692,7 +4972,11 @@ static int vb2ops_vdec_start_streaming(struct vb2_queue *q, unsigned int count)
 
 	ctx->dst_queue_streaming = true;
 
+	if (tvpro_sfmt_checkpoint(1181, "start_streaming before vdec wakeup"))
+		return -EAGAIN;
 	vdec_thread_wakeup(ctx->ada_ctx);
+	if (tvpro_sfmt_checkpoint(1182, "start_streaming after vdec wakeup"))
+		return -EAGAIN;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
 		"%s, type: %d\n", __func__, q->type);
@@ -5268,7 +5552,7 @@ err:
 static int vidioc_vdec_g_parm(struct file *file, void *fh,
 	struct v4l2_streamparm *a)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(fh);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, fh);
 	struct vb2_queue *dst_vq;
 
 	dst_vq = v4l2_m2m_get_vq(ctx->m2m_ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
@@ -5310,7 +5594,7 @@ static void vidioc_vdec_g_parm_ext(struct v4l2_ctrl *ctrl,
 static int vidioc_vdec_g_pixelaspect(struct file *file, void *fh,
 	int buf_type, struct v4l2_fract *aspect)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(fh);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, fh);
 	u32 height_aspect_ratio, width_aspect_ratio;
 
 	if ((aspect == NULL) || (ctx == NULL)) {
@@ -5384,7 +5668,7 @@ static int check_dec_cfginfo(struct aml_vcodec_ctx *ctx, struct aml_vdec_cfg_inf
 static int vidioc_vdec_s_parm(struct file *file, void *fh,
 	struct v4l2_streamparm *a)
 {
-	struct aml_vcodec_ctx *ctx = fh_to_ctx(fh);
+	struct aml_vcodec_ctx *ctx = aml_vdec_file_ctx(file, fh);
 	struct vb2_queue *dst_vq;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT, "%s\n", __func__);

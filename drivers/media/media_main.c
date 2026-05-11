@@ -234,3 +234,4 @@ module_exit(media_main_exit);
 MODULE_DESCRIPTION("Amlogic media support module");
 MODULE_LICENSE("GPL v2");
 MODULE_IMPORT_NS("DMA_BUF");
+MODULE_IMPORT_NS("DMA_BUF_HEAP");

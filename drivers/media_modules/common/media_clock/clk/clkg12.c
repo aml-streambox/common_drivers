@@ -35,6 +35,8 @@
 #include "../switch/amports_gate.h"
 #include "../../chips/decoder_cpu_ver_info.h"
 
+extern bool tvpro_vdec_clk_checkpoint(int step, const char *name, int value);
+
 #define MHz (1000000)
 #define debug_print pr_info
 #define TL1_HEVC_MAX_CLK  (800)
@@ -476,32 +478,74 @@ int vdec_set_clk(int dec, int source, int div)
 }
 
 #else
+static int vdec1_set_clk_direct_rate(int rate)
+{
+	int source, div, rclk;
+
+	vdec_get_clk_source(rate / MHz, &source, &div, &rclk);
+	VDEC1_SAFE_CLOCK();
+	VDEC1_CLOCK_OFF();
+	vdec1_set_clk(source, div);
+	VDEC1_CLOCK_ON();
+
+	return 0;
+}
+
 static int vdec_set_clk(int dec, int rate)
 {
 	struct clk *clk = NULL;
+	int ret;
 
+	if (tvpro_vdec_clk_checkpoint(740, "vdec_set_clk enter", dec))
+		return -EAGAIN;
 	switch (dec) {
 	case VDEC_1:
+		if (!gclk.vdec_mux_node) {
+			pr_warn("vdec mux clock gate is missing, using direct clock programming\n");
+			return vdec1_set_clk_direct_rate(rate);
+		}
 		clk = gclk.vdec_mux_node->clk;
+		if (tvpro_vdec_clk_checkpoint(741,
+			    "before DOS_GCLK_EN0", rate))
+			return -EAGAIN;
 		WRITE_VREG_BITS(DOS_GCLK_EN0, 0x3ff, 0, 10);
+		if (tvpro_vdec_clk_checkpoint(742,
+			    "after DOS_GCLK_EN0", rate))
+			return -EAGAIN;
 		break;
 
 	case VDEC_HCODEC:
+		if (!gclk.hcodec_mux_node) {
+			pr_err("hcodec mux clock gate is missing\n");
+			return -ENODEV;
+		}
 		clk = gclk.hcodec_mux_node->clk;
 		WRITE_VREG_BITS(DOS_GCLK_EN0, 0x7fff, 12, 15);
 		break;
 
 	case VDEC_2:
+		if (!gclk.vdec_mux_node) {
+			pr_err("vdec mux clock gate is missing\n");
+			return -ENODEV;
+		}
 		clk = gclk.vdec_mux_node->clk;
 		WRITE_VREG(DOS_GCLK_EN1, 0x3ff);
 		break;
 
 	case VDEC_HEVC:
+		if (!gclk.hevc_mux_node) {
+			pr_err("hevc mux clock gate is missing\n");
+			return -ENODEV;
+		}
 		clk = gclk.hevc_mux_node->clk;
 		WRITE_VREG(DOS_GCLK_EN3, 0xffffffff);
 		break;
 
 	case VDEC_HEVCB:
+		if (!gclk.hevc_back_mux_node) {
+			pr_err("hevc back mux clock gate is missing\n");
+			return -ENODEV;
+		}
 		clk = gclk.hevc_back_mux_node->clk;
 		WRITE_VREG(DOS_GCLK_EN3, 0xffffffff);
 		break;
@@ -518,7 +562,21 @@ static int vdec_set_clk(int dec, int rate)
 		return -1;
 	}
 
-	clk_set_rate(clk, rate);
+	if (tvpro_vdec_clk_checkpoint(750, "before clk_set_rate", rate))
+		return -EAGAIN;
+	ret = clk_set_rate(clk, rate);
+	if (dec == VDEC_1 && ret) {
+		if (ret)
+			pr_warn("vdec mux clk_set_rate(%d) failed: %d, using direct clock programming\n",
+				rate, ret);
+		ret = vdec1_set_clk_direct_rate(rate);
+	}
+	if (ret)
+		return ret;
+	if (tvpro_vdec_clk_checkpoint(752, "after direct vdec_set_clk", rate))
+		return -EAGAIN;
+	if (tvpro_vdec_clk_checkpoint(751, "after clk_set_rate", rate))
+		return -EAGAIN;
 
 	return 0;
 }
@@ -731,6 +789,10 @@ static int hcodec_clock_set(int clk)
 #else
 static int vdec_clock_set(int clk)
 {
+	int ret;
+
+	if (tvpro_vdec_clk_checkpoint(720, "clkg12 clock_set enter", clk))
+		return -EAGAIN;
 	if (clk == 1)
 		clk = 200;
 	else if (clk == 2) {
@@ -753,19 +815,30 @@ static int vdec_clock_set(int clk)
 		clk = 667;
 	}
 
+	if (tvpro_vdec_clk_checkpoint(721, "before vdec_max_clk_get", clk))
+		return -EAGAIN;
 	clk = vdec_max_clk_get();
+	if (tvpro_vdec_clk_checkpoint(722, "after vdec_max_clk_get", clk))
+		return -EAGAIN;
 
 	if (set_frq_enable && vdec_frq) {
 		pr_info("Set the vdec frq is %u MHz\n", vdec_frq);
 		clk = vdec_frq;
 	}
 
-	vdec_set_clk(VDEC_1, clk * MHz);
+	if (tvpro_vdec_clk_checkpoint(723, "before vdec_set_clk", clk))
+		return -EAGAIN;
+	ret = vdec_set_clk(VDEC_1, clk * MHz);
+	if (ret)
+		return ret;
+	if (tvpro_vdec_clk_checkpoint(724, "after vdec_set_clk", clk))
+		return -EAGAIN;
 
 	clock_real_clk[VDEC_1] = clk;
 
-	pr_debug("vdec mux clock is %lu Hz\n",
-		clk_get_rate(gclk.vdec_mux_node->clk));
+	if (gclk.vdec_mux_node)
+		pr_debug("vdec mux clock is %lu Hz\n",
+			clk_get_rate(gclk.vdec_mux_node->clk));
 
 	return clk;
 }

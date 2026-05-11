@@ -843,7 +843,7 @@ static int aux_data_crc_store(struct aux_data_check_mgr_t *mgr,int crc)
 }
 
 //u32 __pure crc32_le(u32 crc, unsigned char const *p, size_t len);
-static u32 crc32_vmap_le(u32 crc, unsigned char const *paddr, size_t size)
+static u32 crc32_vmap_le(u32 crc, const void *paddr, size_t size)
 {
 	ulong phyaddr = (ulong)paddr;
 	void *vaddr = NULL;
@@ -912,7 +912,7 @@ static int do_check_nv21(struct pic_check_mgr_t *mgr, struct vframe_s *vf)
 {
 	unsigned int crc_y = 0, crc_uv = 0;
 	void *p_yaddr, *p_uvaddr;
-	u32 (*crc_func)(u32, unsigned char const *, size_t);
+	u32 (*crc_func)(u32, const void *, size_t);
 
 	if (mgr->y_vaddr && mgr->uv_vaddr) {
 		crc_func = crc32_le;

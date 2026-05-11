@@ -426,8 +426,8 @@ static int tee_get_sys_boot_complete(void)
 	return res.a0;
 }
 
-static ssize_t os_version_show(struct class *class,
-			       struct class_attribute *attr, char *buf)
+static ssize_t os_version_show(const struct class *class,
+			       const struct class_attribute *attr, char *buf)
 {
 	int ret;
 	u32 major, minor;
@@ -441,8 +441,8 @@ static ssize_t os_version_show(struct class *class,
 	return ret;
 }
 
-static ssize_t sys_info_show(struct class *class,
-			       struct class_attribute *attr, char *buf)
+static ssize_t sys_info_show(const struct class *class,
+			       const struct class_attribute *attr, char *buf)
 {
 	int ret;
 
@@ -454,8 +454,8 @@ static ssize_t sys_info_show(struct class *class,
 	return ret;
 }
 
-static ssize_t api_version_show(struct class *class,
-				struct class_attribute *attr, char *buf)
+static ssize_t api_version_show(const struct class *class,
+				const struct class_attribute *attr, char *buf)
 {
 	int ret;
 	u32 major, minor;
@@ -469,8 +469,8 @@ static ssize_t api_version_show(struct class *class,
 	return ret;
 }
 
-static ssize_t log_mode_show(struct class *class,
-				struct class_attribute *attr, char *buf)
+static ssize_t log_mode_show(const struct class *class,
+				const struct class_attribute *attr, char *buf)
 {
 	int ret = 0;
 
@@ -479,8 +479,8 @@ static ssize_t log_mode_show(struct class *class,
 	return ret;
 }
 
-static ssize_t log_level_show(struct class *class,
-				struct class_attribute *attr, char *buf)
+static ssize_t log_level_show(const struct class *class,
+				const struct class_attribute *attr, char *buf)
 {
 	int ret = 0;
 
@@ -489,8 +489,8 @@ static ssize_t log_level_show(struct class *class,
 	return ret;
 }
 
-static ssize_t sys_boot_complete_show(struct class *class,
-				struct class_attribute *attr, char *buf)
+static ssize_t sys_boot_complete_show(const struct class *class,
+				const struct class_attribute *attr, char *buf)
 {
 	int ret = 0;
 
@@ -506,8 +506,8 @@ static ssize_t sys_boot_complete_show(struct class *class,
 	return ret;
 }
 
-static ssize_t modules_log_level_show(struct class *class,
-				struct class_attribute *attr, char *buf)
+static ssize_t modules_log_level_show(const struct class *class,
+				const struct class_attribute *attr, char *buf)
 {
 	int ret = 0;
 	int trace_level = 0;
@@ -522,8 +522,8 @@ static ssize_t modules_log_level_show(struct class *class,
 	return ret;
 }
 
-static ssize_t sys_boot_complete_store(struct class *class,
-				struct class_attribute *attr,
+static ssize_t sys_boot_complete_store(const struct class *class,
+				const struct class_attribute *attr,
 				const char *buf, size_t count)
 {
 	bool val;
@@ -541,8 +541,8 @@ static ssize_t sys_boot_complete_store(struct class *class,
 	return count;
 }
 
-static ssize_t log_mode_store(struct class *class,
-				struct class_attribute *attr,
+static ssize_t log_mode_store(const struct class *class,
+				const struct class_attribute *attr,
 				const char *buf, size_t count)
 {
 	struct arm_smccc_res res;
@@ -568,8 +568,8 @@ static ssize_t log_mode_store(struct class *class,
 	return count;
 }
 
-static ssize_t log_level_store(struct class *class,
-				struct class_attribute *attr,
+static ssize_t log_level_store(const struct class *class,
+				const struct class_attribute *attr,
 				const char *buf, size_t count)
 {
 	struct arm_smccc_res res;
@@ -590,8 +590,8 @@ static ssize_t log_level_store(struct class *class,
 	return count;
 }
 
-static ssize_t modules_log_level_store(struct class *class,
-				struct class_attribute *attr,
+static ssize_t modules_log_level_store(const struct class *class,
+				const struct class_attribute *attr,
 				const char *buf, size_t count)
 {
 	int val = 0;
@@ -921,7 +921,7 @@ int tee_create_sysfs(void)
 {
 	int ret;
 
-	tee_sys_class = class_create(THIS_MODULE, DRIVER_NAME);
+	tee_sys_class = class_create(DRIVER_NAME);
 	ret = class_create_file(tee_sys_class, &class_attr_os_version);
 	if (ret != 0) {
 		pr_err("create class file os_version fail\n");

@@ -22,6 +22,7 @@
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
+#include <linux/vmalloc.h>
 #include <linux/amlogic/media/resource_mgr/resourcemanage.h>
 
 #include "vdec.h"
@@ -576,4 +577,3 @@ EXPORT_SYMBOL(report_module_exit);
 MODULE_DESCRIPTION("AMLOGIC bug report driver");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Kuan Hu <kuan.hu@amlogic.com>");
-

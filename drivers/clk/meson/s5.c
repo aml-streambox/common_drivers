@@ -1404,6 +1404,14 @@ static long clk_regmap_mult_div_round_rate(struct clk_hw *hw,
 	return (long)best_rate;
 }
 
+static int clk_regmap_mult_div_determine_rate(struct clk_hw *hw,
+					      struct clk_rate_request *req)
+{
+	req->rate = clk_regmap_mult_div_round_rate(hw, req->rate,
+						     &req->best_parent_rate);
+	return 0;
+}
+
 #define clk_mult_div_mask(width)	((1 << (width)) - 1)
 static int clk_regmap_mult_div_set_rate(struct clk_hw *hw,
 				unsigned long rate, unsigned long parent_rate)
@@ -1436,7 +1444,7 @@ static int clk_regmap_mult_div_set_rate(struct clk_hw *hw,
 
 static const struct clk_ops clk_regmap_mult_div_ops = {
 	.recalc_rate = clk_regmap_mult_div_recalc_rate,
-	.round_rate = clk_regmap_mult_div_round_rate,
+	.determine_rate = clk_regmap_mult_div_determine_rate,
 	.set_rate = clk_regmap_mult_div_set_rate,
 };
 

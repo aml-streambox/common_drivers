@@ -19,6 +19,7 @@
  */
 #include <linux/types.h>
 #include <linux/delay.h>
+#include <linux/errno.h>
 #include <linux/videodev2.h>
 #include <uapi/linux/sched/types.h>
 #include <linux/amlogic/meson_uvm_core.h>
@@ -37,6 +38,48 @@
 #define VPP_BUF_GET_IDX(vpp_buf) (vpp_buf->aml_vb->vb.vb2_buf.index)
 #define INPUT_PORT 0
 #define OUTPUT_PORT 1
+
+#if !IS_ENABLED(CONFIG_AMLOGIC_MEDIA_DEINTERLACE)
+int di_create_instance(struct di_init_parm parm)
+{
+	return -ENODEV;
+}
+
+int di_destroy_instance(int index)
+{
+	return 0;
+}
+
+enum DI_ERRORTYPE di_empty_input_buffer(int index, struct di_buffer *buffer)
+{
+	return DI_ERR_UNDEFINED;
+}
+
+enum DI_ERRORTYPE di_fill_output_buffer(int index, struct di_buffer *buffer)
+{
+	return DI_ERR_UNDEFINED;
+}
+
+int di_release_keep_buf(struct di_buffer *buffer)
+{
+	return 0;
+}
+
+int di_get_output_buffer_num(int index)
+{
+	return 0;
+}
+
+int di_get_input_buffer_num(int index)
+{
+	return 0;
+}
+
+int di_s_bypass_ch(int index, bool on)
+{
+	return 0;
+}
+#endif
 
 extern int dump_vpp_input;
 extern int vpp_bypass_frames;

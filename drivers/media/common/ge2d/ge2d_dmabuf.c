@@ -310,12 +310,12 @@ static void aml_dmabuf_ops_release(struct dma_buf *dbuf)
 		aml_dma_put(buf);
 }
 
-static int aml_dmabuf_ops_vmap(struct dma_buf *dbuf, struct dma_buf_map *map)
+static int aml_dmabuf_ops_vmap(struct dma_buf *dbuf, struct iosys_map *map)
 {
 	struct aml_dma_buf_priv *buf_priv = dbuf->priv;
 	struct aml_dma_buf *buf = buf_priv->aml_buf;
 
-	dma_buf_map_set_vaddr(map, buf->vaddr);  //change in kernel5.15
+	iosys_map_set_vaddr(map, buf->vaddr);
 	return 0;
 }
 

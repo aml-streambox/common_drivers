@@ -54,6 +54,21 @@
 			pmsg-size = <0x20000>;
 		};
 
+		dmc_reserved: linux,dmc_monitor {
+			compatible = "amlogic,dmc_monitor-reserved";
+			reg = <0x0 0x00000000 0x0 0x00080000>;
+		};
+
+		debug_reserved: linux,iotrace {
+			compatible = "amlogic, iotrace";
+			reg = <0x0 0x04f00000 0x0 0x00100000>;
+			io-size = <0x1b000>;
+			sched-size = <0x2000>;
+			irq-size = <0x1000>;
+			smc-size = <0x1000>;
+			misc-size = <0x1000>;
+		};
+
 		logo_reserved: linux,meson-fb {
 			compatible = "amlogic, meson-fb";
 			reusable;
@@ -68,8 +83,23 @@
 			size = <0x0 0x40000000>;
 			alignment = <0x0 0x00400000>;
 			linux,contiguous-region;
-			alloc-ranges = <0x0 0x0 0x0 0xe0000000>;
+			alloc-ranges = <0x0 0x0 0x0 0x80000000>;
 			clear-map;
+		};
+
+		codec_mm_reserved: linux,codec_mm_reserved {
+			compatible = "amlogic, codec-mm-reserved";
+			size = <0x0 0x0>;
+			alignment = <0x0 0x00100000>;
+			alloc-ranges = <0x0 0x0 0x0 0xe0000000>;
+		};
+
+		secure_vdec_reserved: linux,secure_vdec_reserved {
+			compatible = "amlogic, secure-vdec-reserved";
+			no-map;
+			size = <0x0 0x01000000>;
+			alignment = <0x0 0x00100000>;
+			alloc-ranges = <0x0 0x0 0x0 0xe0000000>;
 		};
 
 		vdin1_cma_reserved: linux,vdin1_cma {
@@ -110,11 +140,76 @@
 		reserve_mem_size = <0x03300000>;
 	};
 
+	optee {
+		compatible = "linaro,optee-tz";
+		method = "smc";
+	};
+
 	codec_mm {
 		compatible = "amlogic, codec, mm";
-		memory-region = <&codec_mm_cma>;
+		memory-region = <&codec_mm_cma &codec_mm_reserved &secure_vdec_reserved>;
 		dev_name = "codec_mm";
 		status = "okay";
+	};
+
+	mesonstream {
+		compatible = "amlogic, codec, streambuf";
+		dev_name = "mesonstream";
+		status = "okay";
+		clocks = <&clkc_periphs CLKID_SYS_DOS>,
+			 <&display_clkc CLKID_T7_DISPLAY_VDEC_MUX>,
+			 <&hcodec_mux_clk>,
+			 <&display_clkc CLKID_T7_DISPLAY_HEVCF_MUX>,
+			 <&display_clkc CLKID_T7_DISPLAY_HEVCB_MUX>;
+		clock-names = "vdec",
+			      "clk_vdec_mux",
+			      "clk_hcodec_mux",
+			      "clk_hevcf_mux",
+			      "clk_hevcb_mux";
+		assigned-clock-parents = <&display_clkc CLKID_T7_DISPLAY_VDEC_P0>,
+					 <&display_clkc CLKID_T7_DISPLAY_HEVCF_P0>,
+					 <&display_clkc CLKID_T7_DISPLAY_HEVCB_P0>;
+		assigned-clocks = <&display_clkc CLKID_T7_DISPLAY_VDEC_MUX>,
+				  <&display_clkc CLKID_T7_DISPLAY_HEVCF_MUX>,
+				  <&display_clkc CLKID_T7_DISPLAY_HEVCB_MUX>;
+	};
+
+	vdec {
+		compatible = "amlogic, vdec-pm-pd";
+		dev_name = "vdec.0";
+		status = "okay";
+		interrupts = <GIC_SPI 3 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 23 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 32 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 91 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 92 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 93 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 72 IRQ_TYPE_EDGE_RISING>;
+		interrupt-names = "vsync",
+				  "demux",
+				  "parser",
+				  "mailbox_0",
+				  "mailbox_1",
+				  "mailbox_2",
+				  "parser_b";
+		power-domains = <&pwrc PWRC_T7_DOS_VDEC_ID>,
+				<&pwrc PWRC_T7_DOS_HCODEC_ID>,
+				<&pwrc PWRC_T7_DOS_HEVC_ID>,
+				<&pwrc PWRC_T7_DOS_WAVE_ID>;
+		power-domain-names = "pwrc-vdec",
+				     "pwrc-hcodec",
+				     "pwrc-hevc",
+				     "pwrc-wave";
+	};
+
+	vcodec_dec {
+		compatible = "amlogic, vcodec-dec";
+		dev_name = "aml-vcodec-dec";
+		status = "okay";
+	};
+
+	cpu_ver_name: cpu_ver_name {
+		compatible = "amlogic, cpu-major-id-t7";
 	};
 
 	canvas: canvas {
@@ -177,6 +272,34 @@
 		compatible = "fixed-clock";
 		clock-frequency = <2000000000>;
 		clock-output-names = "fix";
+		#clock-cells = <0>;
+	};
+
+	vdec_mux_clk: vdec-mux-clk {
+		compatible = "fixed-clock";
+		clock-frequency = <24000000>;
+		clock-output-names = "vdec_mux_dummy";
+		#clock-cells = <0>;
+	};
+
+	hcodec_mux_clk: hcodec-mux-clk {
+		compatible = "fixed-clock";
+		clock-frequency = <24000000>;
+		clock-output-names = "hcodec_mux_dummy";
+		#clock-cells = <0>;
+	};
+
+	hevcf_mux_clk: hevcf-mux-clk {
+		compatible = "fixed-clock";
+		clock-frequency = <24000000>;
+		clock-output-names = "hevcf_mux_dummy";
+		#clock-cells = <0>;
+	};
+
+	hevcb_mux_clk: hevcb-mux-clk {
+		compatible = "fixed-clock";
+		clock-frequency = <24000000>;
+		clock-output-names = "hevcb_mux_dummy";
 		#clock-cells = <0>;
 	};
 

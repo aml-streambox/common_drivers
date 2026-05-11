@@ -23,7 +23,10 @@ ${MODULE_NAME}-objs += decoder/vdec_av1_if.o
 ${MODULE_NAME}-objs += decoder/vdec_avs2_if.o
 ${MODULE_NAME}-objs += decoder/vdec_avs3_if.o
 ${MODULE_NAME}-objs += decoder/vdec_vc1_if.o
-ifdef CONFIG_AMLOGIC_MEDIA_V4L_SOFTWARE_PARSER
+# The forward-ported 7.1 tree does not expose the vendor parser Kconfig
+# symbol, but the V4L2 decoders still depend on these parsers for direct
+# non-ucode probe paths.
+ccflags-y += -DCONFIG_AMLOGIC_MEDIA_V4L_SOFTWARE_PARSER
 ${MODULE_NAME}-objs += decoder/aml_h264_parser.o
 ${MODULE_NAME}-objs += decoder/aml_hevc_parser.o
 ${MODULE_NAME}-objs += decoder/aml_vp9_parser.o
@@ -31,7 +34,6 @@ ${MODULE_NAME}-objs += decoder/aml_mpeg12_parser.o
 ${MODULE_NAME}-objs += decoder/aml_mpeg4_parser.o
 ${MODULE_NAME}-objs += decoder/aml_mjpeg_parser.o
 ${MODULE_NAME}-objs += utils/golomb.o
-endif
 ${MODULE_NAME}-objs += utils/common.o
 ${MODULE_NAME}-objs += utils/aml_dec_trace.o
 

@@ -21,6 +21,9 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/dma-mapping.h>
+#include <linux/delay.h>
+#include <linux/moduleparam.h>
+#include <linux/vmalloc.h>
 #include <linux/amlogic/media/codec_mm/codec_mm.h>
 #include "../../../stream_input/amports/amports_priv.h"
 #include "vdec.h"
@@ -51,6 +54,12 @@
 
 #define MEM_NAME "VFRAME_INPUT"
 
+static bool tvpro_vdec_input_checkpoint(int step, const char *name,
+	struct vdec_input_s *input)
+{
+	return false;
+}
+
 //static int vdec_input_get_duration_u64(struct vdec_input_s *input);
 static struct vframe_block_list_s *
 	vdec_input_alloc_new_block(struct vdec_input_s *input,
@@ -69,6 +78,17 @@ static int aml_copy_from_user(void *to, const void *from, ulong n)
 		memcpy(to, from, n);
 
 	return ret;
+}
+
+static void tvpro_vdec_input_dump_user_bytes(struct vdec_input_s *input,
+	const char *stage, const char *buf, size_t count)
+{
+}
+
+static void tvpro_vdec_input_dump_block_bytes(struct vdec_input_s *input,
+	const char *stage, struct vframe_block_list_s *block, u32 offset,
+	size_t count)
+{
 }
 
 static int copy_from_user_to_phyaddr(struct vdec_input_s *input, void *virts, const char __user *buf,
@@ -145,11 +165,15 @@ static int vframe_chunk_fill(struct vdec_input_s *input,
 			size_t count, struct vframe_block_list_s *block)
 {
 	u8 *p = (u8 *)block->start_virt + block->wp;
+
+	tvpro_vdec_input_dump_user_bytes(input, "chunk-fill", buf, count);
 	if (block->type == VDEC_TYPE_FRAME_BLOCK) {
 		copy_from_user_to_phyaddr(input, p, buf, count,
 			block->start + block->wp,
 			chunk->padding_size,
 			block->is_mapped);
+		tvpro_vdec_input_dump_block_bytes(input, "chunk-fill",
+			block, block->wp, count);
 	} else if (block->type == VDEC_TYPE_FRAME_CIRCULAR) {
 		size_t len = min((size_t)(block->size - block->wp), count);
 		u32 wp;
@@ -808,12 +832,19 @@ int vdec_input_add_chunk(struct vdec_input_s *input, const char *buf,
 
 	int need_padding_size = MIN_FRAME_PADDING_SIZE;
 
+	if (tvpro_vdec_input_checkpoint(1510, "add_chunk enter", input))
+		return -EAGAIN;
+
 	if (vdec_secure(vdec) || vdec_dmabuf(vdec)) {
+		if (tvpro_vdec_input_checkpoint(1511, "add_chunk before secure alloc", input))
+			return -EAGAIN;
 		block = vdec_input_alloc_new_block(input, (ulong)buf,
 			PAGE_ALIGN(count + HEVC_PADDING_SIZE + 1),
 			free, priv); /*Add padding large than HEVC_PADDING_SIZE */
 		if (!block)
 			return -ENOMEM;
+		if (tvpro_vdec_input_checkpoint(1512, "add_chunk after secure alloc", input))
+			return -EAGAIN;
 		block->handle = handle;
 	} else {
 #if 0
@@ -891,11 +922,15 @@ int vdec_input_add_chunk(struct vdec_input_s *input, const char *buf,
 			block = NULL;
 		}
 		if (!block) {/*try new block.*/
+			if (tvpro_vdec_input_checkpoint(1513, "add_chunk before get block", input))
+				return -EAGAIN;
 			int ret = vdec_input_get_free_block(input,
 				count + need_padding_size + EXTRA_PADDING_SIZE,
 				&block);
 			if (ret < 0)/*no enough block now.*/
 				return ret;
+			if (tvpro_vdec_input_checkpoint(1514, "add_chunk after get block", input))
+				return -EAGAIN;
 		}
 
 		if (block && free) {
@@ -904,7 +939,11 @@ int vdec_input_add_chunk(struct vdec_input_s *input, const char *buf,
 		}
 	}
 
+	if (tvpro_vdec_input_checkpoint(1515, "add_chunk before chunk alloc", input))
+		return -EAGAIN;
 	chunk = kzalloc(sizeof(struct vframe_chunk_s), GFP_KERNEL);
+	if (tvpro_vdec_input_checkpoint(1516, "add_chunk after chunk alloc", input))
+		return -EAGAIN;
 
 	if (!chunk) {
 		pr_err("vframe_chunk structure allocation failed\n");
@@ -964,6 +1003,8 @@ int vdec_input_add_chunk(struct vdec_input_s *input, const char *buf,
 		chunk->offset = block->wp;
 		chunk->size = count;
 		chunk->padding_size = need_padding_size;
+		if (tvpro_vdec_input_checkpoint(1517, "add_chunk before chunk fill", input))
+			return -EAGAIN;
 		if (vframe_chunk_fill(input, chunk, buf, count, block)) {
 			pr_err("vframe_chunk_fill failed\n");
 			if (chunk->hdr10p_data_buf != NULL) {
@@ -974,11 +1015,19 @@ int vdec_input_add_chunk(struct vdec_input_s *input, const char *buf,
 			kfree(chunk);
 			return -EFAULT;
 		}
+		if (tvpro_vdec_input_checkpoint(1518, "add_chunk after chunk fill", input))
+			return -EAGAIN;
 
 	}
 
 
+	if (tvpro_vdec_input_checkpoint(1519, "add_chunk before input lock", input))
+		return -EAGAIN;
 	flags = vdec_input_lock(input);
+	if (tvpro_vdec_input_checkpoint(1520, "add_chunk after input lock", input)) {
+		vdec_input_unlock(input, flags);
+		return -EAGAIN;
+	}
 
 	vframe_block_add_chunk(block, chunk);
 
@@ -986,8 +1035,17 @@ int vdec_input_add_chunk(struct vdec_input_s *input, const char *buf,
 	input->data_size += chunk->size;
 	input->have_frame_num++;
 
-	if (input->have_frame_num == 1)
+	if (input->have_frame_num == 1) {
+		if (tvpro_vdec_input_checkpoint(1521, "add_chunk before vdec_up", input)) {
+			vdec_input_unlock(input, flags);
+			return -EAGAIN;
+		}
 		input->vdec_up(vdec);
+		if (tvpro_vdec_input_checkpoint(1522, "add_chunk after vdec_up", input)) {
+			vdec_input_unlock(input, flags);
+			return -EAGAIN;
+		}
+	}
 	ATRACE_COUNTER(input->vdec_input_name, input->have_frame_num);
 	if (chunk->pts_valid) {
 		input->last_inpts_u64 = chunk->pts64;
@@ -1000,6 +1058,8 @@ int vdec_input_add_chunk(struct vdec_input_s *input, const char *buf,
 		input->frame_max_size = chunk->size;
 	input->total_wr_count += count;
 	vdec_input_unlock(input, flags);
+	if (tvpro_vdec_input_checkpoint(1523, "add_chunk after input unlock", input))
+		return -EAGAIN;
 #if 0
 	if (add_count == 2)
 		input->total_wr_count += 38;
@@ -1015,6 +1075,9 @@ int vdec_input_add_frame(struct vdec_input_s *input, const char *buf,
 	struct drm_info drm;
 	struct vdec_s *vdec = input->vdec;
 	unsigned long phy_buf;
+
+	if (tvpro_vdec_input_checkpoint(1500, "add_frame enter", input))
+		return -EAGAIN;
 
 	if (vdec_secure(vdec)) {
 		while (count > 0) {
@@ -1036,7 +1099,11 @@ int vdec_input_add_frame(struct vdec_input_s *input, const char *buf,
 				vdec->pts_valid = true;
 		}
 	} else {
+		if (tvpro_vdec_input_checkpoint(1501, "add_frame before add_chunk", input))
+			return -EAGAIN;
 		ret = vdec_input_add_chunk(input, buf, count, 0, free, priv);
+		if (tvpro_vdec_input_checkpoint(1502, "add_frame after add_chunk", input))
+			return -EAGAIN;
 	}
 
 	return ret;

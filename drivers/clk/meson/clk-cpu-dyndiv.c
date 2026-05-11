@@ -90,6 +90,14 @@ static long meson_clk_cpu_dyn_round_rate(struct clk_hw *hw,
 	return min;
 }
 
+static int meson_clk_cpu_dyn_determine_rate(struct clk_hw *hw,
+					   struct clk_rate_request *req)
+{
+	req->rate = meson_clk_cpu_dyn_round_rate(hw, req->rate,
+						 &req->best_parent_rate);
+	return 0;
+}
+
 static int meson_cpu_dyn_set(struct clk_hw *hw, u16 dyn_pre_mux, u16 dyn_post_mux, u16 dyn_div)
 {
 	struct clk_regmap *clk = to_clk_regmap(hw);
@@ -204,7 +212,7 @@ static u8 meson_clk_cpu_dyn_get_parent(struct clk_hw *hw)
 /* set the cpu fixed clk as one level clk */
 const struct clk_ops meson_clk_cpu_dyn_ops = {
 	.recalc_rate = meson_clk_cpu_dyn_recalc_rate,
-	.round_rate = meson_clk_cpu_dyn_round_rate,
+	.determine_rate = meson_clk_cpu_dyn_determine_rate,
 	.set_rate = meson_clk_cpu_dyn_set_rate,
 	.get_parent = meson_clk_cpu_dyn_get_parent
 };
@@ -265,7 +273,7 @@ static unsigned long meson_sec_sys_clk_recalc_rate(struct clk_hw *hw,
 
 const struct clk_ops meson_sec_sys_clk_ops = {
 	.recalc_rate = meson_sec_sys_clk_recalc_rate,
-	.round_rate = meson_clk_cpu_dyn_round_rate,
+	.determine_rate = meson_clk_cpu_dyn_determine_rate,
 	.set_rate = meson_clk_cpu_dyn_set_rate,
 	.get_parent = meson_sec_sys_clk_get_parent
 };

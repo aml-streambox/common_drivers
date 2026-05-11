@@ -214,9 +214,9 @@ struct module_debug_node {
 
 static int resman_debug = 1;
 static int preempt_timeout_ms = 2500;
-static struct list_head sessions_head;
-static struct list_head resources_head;
-static struct list_head debug_head;
+static LIST_HEAD(sessions_head);
+static LIST_HEAD(resources_head);
+static LIST_HEAD(debug_head);
 static DEFINE_MUTEX(sessions_lock);
 static DEFINE_MUTEX(resource_lock);
 static DEFINE_MUTEX(debug_lock);
@@ -2383,7 +2383,7 @@ int resman_register_debug_callback(const char *module, debug_callback callback)
 		}
 
 		node->module = kzalloc(strlen(module) + 1, GFP_KERNEL);
-		if (!node) {
+		if (!node->module) {
 			dprintk(0, "failed allocate module for %s\n", module);
 			res = -ENOMEM;
 			goto error;

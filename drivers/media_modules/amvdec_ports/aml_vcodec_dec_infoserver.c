@@ -439,4 +439,3 @@ int aml_vcodec_decinfo_get(struct v4l2_ctrl *ctrl,
 
 	return ret;
 }
-

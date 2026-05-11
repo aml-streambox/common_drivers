@@ -81,8 +81,9 @@ static void amvdec_pg_enable(bool enable)
 		/* AMVDEC_CLK_GATE_ON(VLD_CLK); */
 		AMVDEC_CLK_GATE_ON(AMRISC);
 		/* #if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON6TVD */
-		if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_M8)
+		if (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_M8) {
 			WRITE_VREG(GCLK_EN, 0x3ff);
+		}
 		/* #endif */
 		CLEAR_VREG_MASK(MDEC_PIC_DC_CTRL, 1 << 31);
 	} else {
@@ -696,10 +697,14 @@ EXPORT_SYMBOL(amvdec_loadmc_ex);
 s32 amvdec_vdec_loadmc_ex(enum vformat_e type, const char *name,
 	struct vdec_s *vdec, char *def)
 {
+	s32 ret;
+
 	if (fw_tee_enabled())
-		return optee_load_fw(type, name);
+		ret = optee_load_fw(type, name);
 	else
-		return am_loadmc_vdec_ex(vdec, name, def, &aml_loadmc_vdec);
+		ret = am_loadmc_vdec_ex(vdec, name, def, &aml_loadmc_vdec);
+
+	return ret;
 }
 EXPORT_SYMBOL(amvdec_vdec_loadmc_ex);
 

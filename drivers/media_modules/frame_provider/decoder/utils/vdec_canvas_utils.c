@@ -19,6 +19,7 @@
  */
 #include <linux/types.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include "vdec_canvas_utils.h"
 #include "../../../common/chips/decoder_cpu_ver_info.h"
 #include <linux/amlogic/media/canvas/canvas.h>
