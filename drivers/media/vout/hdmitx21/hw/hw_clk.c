@@ -1067,6 +1067,44 @@ void set_hdmitx_s7d_htx_pll(struct hdmitx_dev *hdev)
 }
 #endif
 
+static void t7_calc_pixel_clk_hpll_vco_od(u32 pixel_freq, u32 *vco_out,
+					  u32 *od1, u32 *od2)
+{
+	u32 htx_vco;
+	u32 div = 1;
+
+	if (!vco_out || !od1 || !od2)
+		return;
+
+	if (pixel_freq < 25175 || pixel_freq > 5940000) {
+		HDMITX_ERROR("%s[%d] invalid pixel clock %d\n",
+			__func__, __LINE__, pixel_freq);
+		return;
+	}
+
+	pixel_freq *= 10; /* T7 TMDS modes use 10x pixel clock as HPLL base. */
+	if (pixel_freq > MAX_HTXPLL_VCO)
+		HDMITX_ERROR("%s[%d] base pixel clock %d over MAX_HTXPLL_VCO %d\n",
+			__func__, __LINE__, pixel_freq, MAX_HTXPLL_VCO);
+
+	htx_vco = pixel_freq;
+	do {
+		if (htx_vco >= MIN_HTXPLL_VCO && htx_vco < MAX_HTXPLL_VCO)
+			break;
+		div *= 2;
+		htx_vco *= 2;
+	} while (div <= 16);
+
+	*vco_out = htx_vco;
+	if (div > 4) {
+		*od1 = 4;
+		*od2 = div / 4;
+	} else {
+		*od1 = div;
+		*od2 = 1;
+	}
+}
+
 static void set_hdmitx_htx_pll(struct hdmitx_dev *hdev,
 			struct hw_enc_clk_val_group *test_clk)
 {
@@ -1198,8 +1236,10 @@ static void set_hdmitx_htx_pll(struct hdmitx_dev *hdev,
 		}
 		if (j == sizeof(setting_enc_clk_val_24)
 			/ sizeof(struct hw_enc_clk_val_group)) {
-			HDMITX_INFO("Not find VIC = %d for hpll setting\n", vic);
-			return;
+			if (vic < HDMITX_VESA_OFFSET) {
+				HDMITX_INFO("Not find VIC = %d for hpll setting\n", vic);
+				return;
+			}
 		}
 	} else if (cd == COLORDEPTH_30B) {
 		p_enc = &setting_enc_clk_val_30[0];
@@ -1246,6 +1286,26 @@ next:
 		tmp_clk.pnx_div = 2;
 		tmp_clk.pixel_div = 2;
 	}
+
+	if (vic >= HDMITX_VESA_OFFSET) {
+		const struct hdmi_timing *timing = hdmitx_mode_vic_to_hdmi_timing(vic);
+
+		if (!timing) {
+			HDMITX_INFO("failed to find VIC %d timing\n", vic);
+			return;
+		}
+		memset(&tmp_clk, 0, sizeof(tmp_clk));
+		t7_calc_pixel_clk_hpll_vco_od(timing->pixel_freq,
+			&tmp_clk.hpll_clk_out, &tmp_clk.od1, &tmp_clk.od2);
+		tmp_clk.od3 = 2;
+		tmp_clk.vid_pll_div = VID_PLL_DIV_5;
+		tmp_clk.vid_clk_div = 2;
+		tmp_clk.enc_div = 1;
+		tmp_clk.fe_div = 1;
+		tmp_clk.pnx_div = 1;
+		tmp_clk.pixel_div = 1;
+	}
+
 	HDMITX_INFO("hdmitx sub-clock: %d %d %d %d %d %d %d %d %d %d\n",
 		tmp_clk.hpll_clk_out, tmp_clk.od1, tmp_clk.od2, tmp_clk.od3,
 		tmp_clk.vid_pll_div, tmp_clk.vid_clk_div, tmp_clk.enc_div,

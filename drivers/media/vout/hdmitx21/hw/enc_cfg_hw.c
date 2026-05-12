@@ -63,6 +63,17 @@ static void config_tv_enc_calc(struct hdmitx_dev *hdev, enum hdmi_vic vic)
 	HDMITX_INFO("%s[%d] vic = %d\n", __func__, __LINE__, tp->vic);
 
 	timing = *tp;
+
+	/* Some VESA modes have a 0/1-line front porch, which can produce bad
+	 * ENCP timing. Keep at least two lines while preserving vtotal.
+	 */
+	if (timing.vic >= HDMITX_VESA_OFFSET && timing.v_front <= 1) {
+		u32 adjust = 2 - timing.v_front;
+
+		timing.v_front += adjust;
+		timing.v_back -= adjust;
+	}
+
 	tp = &timing;
 
 	/* the FRL works at dual mode, so the horizon parameters will reduce to half */
@@ -913,4 +924,3 @@ void hdmitx21_pbist_config(struct hdmitx_dev *hdev, enum hdmi_vic vic, int reg_p
 	hdmitx21_wr_reg(BIST_CTRL_IVCTX, data8);
 
 } //pbist end
-
