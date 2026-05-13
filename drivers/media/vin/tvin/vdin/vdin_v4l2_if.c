@@ -47,6 +47,7 @@
 #include <media/v4l2-dv-timings.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-event.h>
+#include <media/v4l2-fh.h>
 #include <media/v4l2-mem2mem.h>
 #include <media/videobuf2-v4l2.h>
 #include <media/videobuf2-dma-contig.h>
@@ -1323,6 +1324,7 @@ static int vdin_vidioc_g_input(struct file *file, void *priv, unsigned int *i)
 static int vdin_vidioc_s_input(struct file *file, void *priv, unsigned int i)
 {
 	int ret;
+	unsigned long flags = 0;
 	struct vdin_dev_s *devp = video_drvdata(file);
 
 	if (i >= devp->v4l2_port_num) {
@@ -1343,6 +1345,11 @@ static int vdin_vidioc_s_input(struct file *file, void *priv, unsigned int i)
 	devp->parm.port     = devp->v4l2_port[i];
 	devp->v4l2_port_cur = devp->v4l2_port[i];
 	devp->unstable_flag = false;
+
+	devp->afbce_flag_backup = devp->afbce_flag;
+	spin_lock_irqsave(&devp->list_head_lock, flags);
+	INIT_LIST_HEAD(&devp->buf_list);
+	spin_unlock_irqrestore(&devp->list_head_lock, flags);
 
 	devp->work_mode = VDIN_WORK_MD_V4L;
 	devp->afbce_flag = 0;
@@ -1546,11 +1553,8 @@ static int vdin_v4l2_open(struct file *file)
 
 	dprintk(0, "%s\n", __func__);
 	/*dump_stack();*/
-	devp->afbce_flag_backup = devp->afbce_flag;
 
 	v4l2_fh_open(file);
-
-	INIT_LIST_HEAD(&devp->buf_list);
 
 	return 0;
 }
@@ -1566,6 +1570,9 @@ static int vdin_v4l2_release(struct file *file)
 
 	if (IS_ERR_OR_NULL(devp))
 		return -EFAULT;
+
+	if (devp->work_mode != VDIN_WORK_MD_V4L)
+		return v4l2_fh_release(file);
 
 	if (devp->flags & VDIN_FLAG_DEC_STARTED) {
 		dprintk(0, "%s: DEC still started (unclean shutdown?), forcing stop\n",
